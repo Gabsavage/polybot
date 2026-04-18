@@ -1,0 +1,18 @@
+[project]
+name = "polycasquette"
+version = "0.1.0"
+description = "Bot d'analyse Polymarket — collecte, traitement et analyse de données on-chain et off-chain"
+requires-python = ">=3.13"
+dependencies = [
+    "pandas",
+    "polars",
+    "duckdb",
+    "pyarrow",
+    "requests",
+    "jupyter",
+    "matplotlib",
+    "seaborn",
+    "py-clob-client",
+    "subgrounds",
+    "python-dotenv",
+]
