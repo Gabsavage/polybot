@@ -1,34 +1,57 @@
 # Polycasquette — Progress
 
-## Phase C — Recherche et backtest
+## 2026-04-20 — Phase C bouclée
 
-### Fait
+- Ground truth enrichi (14/32 adresses via API Polymarket)
+- Notebook pilote Iran cluster exécuté end-to-end
+- Recall 71% (5/7 GT flaggés), Precision 50% (5/10 flags vrais)
+- Faille méthodologique identifiée : les heuristiques Niveau A ne distinguent pas insider gagnant vs contrariant perdant
+- Biais de survivorship documenté sur le GT (tous les cas médiatisés sont des gagnants)
+- Verdict : GO pour phase B avec 4 ajustements prioritaires dont un fondamental (alignement directionnel)
+- Design du bot ajusté : human-in-the-loop obligatoire, pas d'auto-trade
 
-- **Ground truth constitué** — 18 cas forensiques, 31 wallets (22 avec adresse, 71%), 9 sharps positifs, 14 adresses enrichies via API Polymarket
-- **Documents de référence** — 9 fichiers dans `docs/reference/` (brief, architecture, 6 rapports de recherche)
-- **Plan C rédigé** — `docs/C_plan_recherche_backtest.md`, 12 expériences, allocation 50% C1 / 35% C2 / 15% C3, decision gates définis
-- **Notebook pilote Iran lancé** — `notebooks/01_pilote_iran_cluster.ipynb`, Parties 1-3 structurées, marché identifié (condition_id, token IDs, $90M volume)
-- **Pivot API** — CLOB `/trades` devenu auth-only, pivoté sur Data API publique (`data-api.polymarket.com/trades?user=<addr>`), notebook mis à jour
+Next: 2-3 jours pause, puis phase B (plan de développement du bot)
 
-### En cours
+---
 
-- **Exécution notebook pilote** — validation cellule par cellule, en attente résultats Partie 2 (ingestion via Data API) et Partie 4 (verdict)
+## Phase C — Détail
 
-### Reste à faire (phase C)
+### Livrables produits
 
-- [ ] Finaliser pilote Iran — verdict GO/NOGO sur pipeline
-- [ ] Créer `data/ground_truth/markets_disputed.csv` (5-8 cas C3)
-- [ ] E1 — Leaderboard FDR-BH sans seed list (6-8h)
-- [ ] E2 — Identifier nouveaux sharps hors seed (3-4h)
-- [ ] E3 — Anti-honeypot cas synthétiques (3-4h)
-- [ ] E7-E9 — Calibration + test C2 sur train/test set (5-8h)
-- [ ] E11 — LLM scoring C3 Haiku (2-3h)
-- [ ] Gate 2 — Décision phase D
+| Fichier | Description |
+|---------|-------------|
+| `data/ground_truth/cases.csv` | 18 cas forensiques |
+| `data/ground_truth/wallets.csv` | 31 wallets (22 avec adresse, 71%) |
+| `data/ground_truth/sharps_positive.csv` | 9 sharps (6 avec adresse, 67%) |
+| `data/ground_truth/enrichment_log.md` | Log des lookups API Polymarket |
+| `data/ground_truth/iran_base_rate_investigation.csv` | 5 flags non-GT classifiés (tous faux positifs) |
+| `docs/C_plan_recherche_backtest.md` | Plan C v2 (12 expériences, gates) |
+| `docs/C_synthese_pilote.md` | Synthèse pilote Iran — résultats corrigés |
+| `docs/archive/C_plan_recherche_v1.md` | Plan C v1 archivé |
+| `notebooks/01_pilote_iran_cluster.ipynb` | Notebook pilote Iran (9 parties) |
+| `scripts/enrich_ground_truth.py` | Script enrichissement adresses |
+
+### Résultats clés pilote Iran
+
+- **7/7 wallets GT retrouvés** via Data API publique
+- **Recall C2** : 5/7 = 71% (2 ratés : périphérique + camouflé)
+- **Precision C2** : 5/10 = 50% (5 FP : 2 contrariants perdants, 2 sharps géo, 1 indéterminé)
+- **F1** : 59%
+- **Correction majeure** : 2 wallets initialement classés "vrais informés" étaient des contrariants perdants (~$260K de pertes). Precision corrigée de 90% → 50%
+
+### 4 ajustements identifiés pour phase B
+
+1. **Alignement directionnel** (critique) — outcome_traded + realized_pnl pour distinguer insider vs contrariant
+2. **Features diversification** — nb_markets, pct_geopolitical, still_active_post_event
+3. **Clustering Victor 2020** — deposit-address-reuse via RPC Polygon
+4. **CEX funding source** — shared deposit detection via trace USDC
 
 ### Blocages connus
 
 | Problème | Impact | Contournement |
 |----------|--------|---------------|
-| CLOB `/trades` auth-only | Ingestion marché entier impossible sans clé | Data API par wallet (OK pour pilote, limite pour C2 base rate) |
-| CLOB `/prices-history` vide sur marchés résolus | Pas de timeline prix native | Reconstitution depuis prix d'entrée des trades |
-| 12 adresses GT irrécupérables (Chainalysis propriétaire) | Recall C2 max ~7/11 sur test set | Accepté comme limite structurelle |
+| CLOB `/trades` auth-only | Pas de vue marché-first | Data API par wallet + Dune pour leaderboard C1 |
+| CLOB `/prices-history` vide sur résolus | Pas de timeline prix native | Reconstitution depuis prix d'entrée des trades |
+| 12 adresses GT irrécupérables | Recall C2 max ~7/11 sur test set | Accepté comme limite structurelle |
+| Heuristiques direction-blind | 50% precision (contrariants flaggés) | Ajustement 1 : filtre directionnel post-résolution |
+| GT biaisé gagnants-only | Pas de ground truth sur contrariants | Documenter le biais, pas de fix possible |
