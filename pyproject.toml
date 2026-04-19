@@ -15,4 +15,6 @@ dependencies = [
     "py-clob-client",
     "subgrounds",
     "python-dotenv",
+    "dune-client",
+    "httpx",
 ]
