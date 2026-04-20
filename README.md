@@ -61,20 +61,21 @@ uv run pytest tests/ -v -m integration
 ## Project structure
 
 ```
-src/polybot/          Main package
-  config.py           Settings via pydantic-settings (.env)
-  db/                 DuckDB migrations
-  storage/            R2 (S3-compatible) client
-  indexers/           Data ingestion (CLOB snapshots, etc.)
-  healthcheck.py      Connectivity checks
-migrations/           SQL migration files
-scripts/              CLI utilities
-tests/                Unit + integration tests
-notebooks/phase_c/    Phase C research notebooks (reference)
-docs/                 Architecture, plans, research docs
-config/               YAML config files (wallets, thresholds)
+src/polybot/            Production code
+  config.py             Settings via pydantic-settings (.env)
+  db/                   DuckDB migrations
+  storage/              R2 (S3-compatible) client
+  indexers/             Data ingestion (CLOB snapshots, etc.)
+  healthcheck.py        Connectivity checks
+research/               Research scripts (separate from prod)
+  phase_c/              Phase C pilot notebooks
+  discover_tier_a/      Tier A wallet candidate discovery
+migrations/             SQL migration files
+scripts/                CLI utilities
+tests/                  Unit + integration tests
+notebooks/              Active notebooks (phase D+)
+data/ground_truth/      Annotated source-of-truth data
+data/research_outputs/  Research script outputs
+docs/                   Architecture, plans, research docs
+config/                 YAML config files (wallets, thresholds)
 ```
-
-## Phase C reference
-
-Phase C research (Iran cluster pilot, ground truth data) is preserved in `notebooks/phase_c/` and `data/ground_truth/`.
