@@ -11,39 +11,39 @@ def test_filter_top_markets():
     """Filter markets by volume threshold and return top N."""
     markets = [
         {
-            "condition_id": "a",
-            "volume_num_24hr": 100_000,
+            "conditionId": "a",
+            "volume24hr": 100_000,
             "clobTokenIds": '["tok_a_yes","tok_a_no"]',
             "question": "Q1",
         },
         {
-            "condition_id": "b",
-            "volume_num_24hr": 30_000,
+            "conditionId": "b",
+            "volume24hr": 30_000,
             "clobTokenIds": '["tok_b_yes","tok_b_no"]',
             "question": "Q2",
         },
         {
-            "condition_id": "c",
-            "volume_num_24hr": 60_000,
+            "conditionId": "c",
+            "volume24hr": 60_000,
             "clobTokenIds": '["tok_c_yes","tok_c_no"]',
             "question": "Q3",
         },
     ]
     result = filter_top_markets(markets, top_n=2, min_volume=50_000)
     assert len(result) == 2
-    assert result[0]["condition_id"] == "a"
-    assert result[1]["condition_id"] == "c"
+    assert result[0]["conditionId"] == "a"
+    assert result[1]["conditionId"] == "c"
 
 
 def test_filter_top_markets_none_volume():
     """Markets with None volume should be excluded."""
     markets = [
-        {"condition_id": "a", "volume_num_24hr": None},
-        {"condition_id": "b", "volume_num_24hr": 80_000},
+        {"conditionId": "a", "volume24hr": None},
+        {"conditionId": "b", "volume24hr": 80_000},
     ]
     result = filter_top_markets(markets, top_n=10, min_volume=50_000)
     assert len(result) == 1
-    assert result[0]["condition_id"] == "b"
+    assert result[0]["conditionId"] == "b"
 
 
 def test_parse_order_book_basic():

@@ -18,8 +18,8 @@ def filter_top_markets(
     markets: list[dict], top_n: int, min_volume: float
 ) -> list[dict]:
     """Filter markets by volume_24h > min_volume, return top N sorted by volume desc."""
-    filtered = [m for m in markets if (m.get("volume_num_24hr") or 0) >= min_volume]
-    filtered.sort(key=lambda m: m.get("volume_num_24hr", 0), reverse=True)
+    filtered = [m for m in markets if float(m.get("volume24hr") or 0) >= min_volume]
+    filtered.sort(key=lambda m: float(m.get("volume24hr") or 0), reverse=True)
     return filtered[:top_n]
 
 
@@ -164,8 +164,12 @@ async def run_snapshot(settings: Settings, r2: R2Client) -> int:
         logger.error("no rows collected — skipping Parquet write")
         return 0
 
+    import io
+
     df = pl.DataFrame(rows)
-    parquet_bytes = df.write_parquet(compression="zstd")
+    buf = io.BytesIO()
+    df.write_parquet(buf, compression="zstd")
+    parquet_bytes = buf.getvalue()
 
     key = f"snapshots/{now.strftime('%Y-%m-%d')}/{now.strftime('%H')}.parquet"
     r2.upload_parquet(key, parquet_bytes)
@@ -205,11 +209,11 @@ async def refresh_snapshot_universe(settings: Settings) -> int:
         con.execute(
             f"INSERT INTO snapshot_universe ({cols}) VALUES (?, ?, ?, ?, ?, ?)",
             [
-                m["condition_id"],
+                m["conditionId"],
                 clob_token_ids[0],
                 clob_token_ids[1],
                 m.get("question", ""),
-                m.get("volume_num_24hr", 0),
+                m.get("volume24hr", 0),
                 now,
             ],
         )

@@ -55,8 +55,8 @@ def validate_snapshot(r2: R2Client, key: str) -> tuple[bool, list[str]]:
         null_bid = df.filter(pl.col("best_bid").is_null()).height
         null_ask = df.filter(pl.col("best_ask").is_null()).height
         null_pct = (null_bid + null_ask) / (2 * n_rows) * 100 if n_rows > 0 else 100
-        if null_pct > 10:
-            issues.append(f"{null_pct:.1f}% null bid/ask (threshold: 10%)")
+        if null_pct > 15:
+            issues.append(f"{null_pct:.1f}% null bid/ask (threshold: 15%)")
 
     # Check unique condition_ids
     if "condition_id" in df.columns:

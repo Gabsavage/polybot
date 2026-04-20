@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,11 +16,11 @@ class Settings(BaseSettings):
     DUCKDB_PATH: Path = Path("data/pm.duckdb")
     MIGRATIONS_DIR: Path = Path("migrations")
 
-    # Cloudflare R2
-    R2_ACCOUNT_ID: str
+    # Cloudflare R2 — reads R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT, R2_BUCKET
     R2_ACCESS_KEY_ID: str
     R2_SECRET_ACCESS_KEY: str
-    R2_BUCKET_NAME: str = "polybot-snapshots"
+    R2_ENDPOINT: str  # full URL e.g. https://<account_id>.r2.cloudflarestorage.com/...
+    R2_BUCKET: str = "polybot-snapshots"
 
     # Polymarket APIs
     GAMMA_API_URL: str = "https://gamma-api.polymarket.com"
@@ -36,7 +35,13 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_DIR: Path = Path("logs")
 
-    @computed_field
     @property
     def r2_endpoint_url(self) -> str:
-        return f"https://{self.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+        """Extract base endpoint (without bucket path) from R2_ENDPOINT."""
+        # R2_ENDPOINT may be https://<id>.r2.cloudflarestorage.com/bucket-name
+        # We need just https://<id>.r2.cloudflarestorage.com
+        url = self.R2_ENDPOINT.rstrip("/")
+        # Remove bucket name suffix if present
+        if url.endswith(f"/{self.R2_BUCKET}"):
+            url = url[: -len(f"/{self.R2_BUCKET}")]
+        return url

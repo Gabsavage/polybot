@@ -7,7 +7,7 @@ from polybot.config import Settings
 
 class R2Client:
     def __init__(self, settings: Settings):
-        self._bucket = settings.R2_BUCKET_NAME
+        self._bucket = settings.R2_BUCKET
         self._s3 = boto3.client(
             "s3",
             endpoint_url=settings.r2_endpoint_url,
