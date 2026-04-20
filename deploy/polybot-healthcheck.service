@@ -1,0 +1,13 @@
+[Unit]
+Description=Polybot healthcheck
+After=network.target
+
+[Service]
+Type=oneshot
+User=polybot
+WorkingDirectory=/opt/polybot
+ExecStart=/opt/polybot/.venv/bin/python -m polybot.healthcheck
+Environment=PYTHONPATH=/opt/polybot/src
+EnvironmentFile=/opt/polybot/.env
+StandardOutput=append:/var/log/polybot/healthcheck.log
+StandardError=append:/var/log/polybot/healthcheck.log
