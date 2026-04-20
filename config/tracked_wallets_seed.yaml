@@ -1,0 +1,7 @@
+# Tier A wallets — to be populated in M2
+# Format:
+#   - address: "0x..."
+#     source: seed_manual
+#     confidence: A1
+#     notes: "Domer — WSJ identified"
+wallets: []
