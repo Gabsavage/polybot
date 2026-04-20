@@ -1,7 +1,273 @@
-# Tier A wallets — to be populated in M2
-# Format:
-#   - address: "0x..."
-#     source: seed_manual
-#     confidence: A1
-#     notes: "Domer — WSJ identified"
-wallets: []
+# config/tracked_wallets_seed.yaml
+# Seed list Tier A pour C1 (Sharp Money Copy)
+# Consommee par scripts/seed_tier_a.py en M2
+#
+# Confidence levels:
+#   A1 = sharp tres confirme (track record > 2 ans, multi-categorie,
+#        > 1000 trades, identifiable publiquement)
+#   A2 = sharp plausible (historique court < 2 ans, specialisation niche,
+#        ou donnees partielles)
+# Reporte en Tier B (post-MVP): candidats emergents sans track record
+#   suffisant pour Tier A
+
+version: 1
+last_updated: "2026-04-21"
+schema_version: "1.0"
+
+wallets:
+  - address: "0x9d84ce0306f8551e02efef1680475fc0f1dc1344"
+    alias: "Domer"
+    tier: "A"
+    confidence: "A1"
+    source:
+      primary: "sharps_positive.csv"
+      secondary: ["twitter_@Domahhhh", "polymarket_profile"]
+      url: "https://polymarket.com/profile/0x9d84ce0306f8551e02efef1680475fc0f1dc1344"
+    specialty:
+      primary_categories: ["politics", "geopolitics", "culture"]
+      is_generalist: true
+      niche_specialist: null
+    metrics_at_selection:
+      pnl_lifetime_usd: 2500000
+      trades_count: 9582
+      first_trade_date: "2022-01-15"
+      last_trade_date_observed: null
+      cumulative_bet_volume_usd: 420000000
+      snapshot_date: "2026-04-21"
+    profile:
+      identity_public: true
+      prior_domain: "poker_pro_mid_2000s + stock_trader"
+      prediction_market_experience_since: 2007
+      geography: "non_US"
+      username_history:
+        - "ImJustKen"
+        - "Domer"
+      social:
+        twitter: "@Domahhhh"
+    selection_rationale:
+      meets_all_r4_criteria: true
+      tier_a_signals:
+        - "top_1_all_time_polymarket"
+        - "9582_trades_multi_category"
+        - "documented_track_record_4_years"
+      risk_flags: []
+    validation:
+      added_at: "2026-04-21"
+      added_by: "manual_review_gab"
+      last_re_evaluated_at: "2026-04-21"
+      review_frequency_months: 6
+
+  - address: "0x44c1dfe43260c94ed4f1d00de2e1f80fb113ebc1"
+    alias: "Aenews2"
+    tier: "A"
+    confidence: "A1"
+    source:
+      primary: "sharps_positive.csv"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0x44c1dfe43260c94ed4f1d00de2e1f80fb113ebc1"
+    specialty:
+      primary_categories: ["culture"]
+      is_generalist: true
+      niche_specialist: null
+    metrics_at_selection:
+      pnl_lifetime_usd: null
+      trades_count: null
+      first_trade_date: "2024-01-01"
+      last_trade_date_observed: null
+      cumulative_bet_volume_usd: null
+      snapshot_date: "2026-04-21"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: null
+      geography: null
+      username_history:
+        - "aenews2"
+        - "aenews"
+        - "aenews-r2"
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: true
+      tier_a_signals:
+        - "2497_predictions"
+        - "12.1M_biggest_win"
+        - "active_since_jan_2024"
+      risk_flags: []
+    validation:
+      added_at: "2026-04-21"
+      added_by: "manual_review_gab"
+      last_re_evaluated_at: "2026-04-21"
+      review_frequency_months: 6
+
+  - address: "0xd1acd3925d895de9aec98ff95f3a30c5279d08d5"
+    alias: "Kickstand7"
+    tier: "A"
+    confidence: "A1"
+    source:
+      primary: "sharps_positive.csv"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0xd1acd3925d895de9aec98ff95f3a30c5279d08d5"
+    specialty:
+      primary_categories: []
+      is_generalist: true
+      niche_specialist: null
+    metrics_at_selection:
+      pnl_lifetime_usd: null
+      trades_count: 1289
+      first_trade_date: "2021-11-01"
+      last_trade_date_observed: null
+      cumulative_bet_volume_usd: null
+      snapshot_date: "2026-04-21"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: 2021
+      geography: null
+      username_history:
+        - "Kickstand7"
+        - "PolyNoob"
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: true
+      tier_a_signals:
+        - "respected_since_2021"
+        - "1289_trades"
+        - "128K_biggest_win"
+        - "4_year_track_record"
+      risk_flags: []
+    validation:
+      added_at: "2026-04-21"
+      added_by: "manual_review_gab"
+      last_re_evaluated_at: "2026-04-21"
+      review_frequency_months: 6
+
+  - address: "0xf2f6af4f27ec2dcf4072095ab804016e14cd5817"
+    alias: "gopfan2"
+    tier: "A"
+    confidence: "A2"
+    source:
+      primary: "sharps_positive.csv"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0xf2f6af4f27ec2dcf4072095ab804016e14cd5817"
+    specialty:
+      primary_categories: ["weather"]
+      is_generalist: false
+      niche_specialist: "weather_markets"
+    metrics_at_selection:
+      pnl_lifetime_usd: null
+      trades_count: 1977
+      first_trade_date: "2024-08-01"
+      last_trade_date_observed: null
+      cumulative_bet_volume_usd: null
+      snapshot_date: "2026-04-21"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: 2024
+      geography: null
+      username_history:
+        - "gopfan2"
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: false
+      tier_a_signals:
+        - "top_weather_market_trader"
+        - "1977_trades"
+        - "920K_biggest_win"
+      risk_flags:
+        - "niche_specialist_L_lt_3"
+        - "A2_due_to_category_concentration"
+    validation:
+      added_at: "2026-04-21"
+      added_by: "manual_review_gab"
+      last_re_evaluated_at: "2026-04-21"
+      review_frequency_months: 6
+
+  - address: "0xa4b366ad22fc0d06f1e934ff468e8922431a87b8"
+    alias: "HolyMoses7"
+    tier: "A"
+    confidence: "A2"
+    source:
+      primary: "sharps_positive.csv"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0xa4b366ad22fc0d06f1e934ff468e8922431a87b8"
+    specialty:
+      primary_categories: []
+      is_generalist: true
+      niche_specialist: null
+    metrics_at_selection:
+      pnl_lifetime_usd: null
+      trades_count: 3218
+      first_trade_date: "2024-12-01"
+      last_trade_date_observed: null
+      cumulative_bet_volume_usd: null
+      snapshot_date: "2026-04-21"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: 2024
+      geography: null
+      username_history:
+        - "HolyMoses7"
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: false
+      tier_a_signals:
+        - "3218_trades"
+        - "117K_biggest_win"
+        - "1_to_1M_challenge"
+      risk_flags:
+        - "short_history_since_dec_2024"
+        - "A2_due_to_recency"
+    validation:
+      added_at: "2026-04-21"
+      added_by: "manual_review_gab"
+      last_re_evaluated_at: "2026-04-21"
+      review_frequency_months: 6
+
+  - address: "0xc2e7800b5af46e6093872b177b7a5e7f0563be51"
+    alias: "Beachboy4"
+    tier: "A"
+    confidence: "A1"
+    source:
+      primary: "sharps_positive.csv"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0xc2e7800b5af46e6093872b177b7a5e7f0563be51"
+    specialty:
+      primary_categories: ["sports"]
+      is_generalist: false
+      niche_specialist: "sports_nfl_nba"
+    metrics_at_selection:
+      pnl_lifetime_usd: 3050000
+      trades_count: 176
+      first_trade_date: "2025-11-01"
+      last_trade_date_observed: null
+      cumulative_bet_volume_usd: 213600000
+      snapshot_date: "2026-04-21"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: 2025
+      geography: null
+      username_history:
+        - "Beachboy4"
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: false
+      tier_a_signals:
+        - "3.05M_lifetime_pnl"
+        - "213.6M_volume"
+        - "3.49M_biggest_win"
+      risk_flags:
+        - "only_176_trades_N_lt_1000"
+        - "A1_exception_justified_by_extreme_sizing_and_pnl"
+    validation:
+      added_at: "2026-04-21"
+      added_by: "manual_review_gab"
+      last_re_evaluated_at: "2026-04-21"
+      review_frequency_months: 6

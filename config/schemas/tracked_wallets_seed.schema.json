@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tracked Wallets Seed List",
+  "type": "object",
+  "required": ["version", "last_updated", "schema_version", "wallets"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "last_updated": { "type": "string", "format": "date" },
+    "schema_version": { "type": "string", "pattern": "^\\d+\\.\\d+$" },
+    "wallets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/wallet" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "wallet": {
+      "type": "object",
+      "required": ["address", "alias", "tier", "confidence", "source", "specialty", "metrics_at_selection", "profile", "selection_rationale", "validation"],
+      "properties": {
+        "address": {
+          "type": "string",
+          "pattern": "^0x[a-fA-F0-9]{40}$"
+        },
+        "alias": { "type": "string", "minLength": 1 },
+        "tier": { "type": "string", "enum": ["A", "B", "C"] },
+        "confidence": { "type": "string", "enum": ["A1", "A2", "B1", "B2"] },
+        "source": {
+          "type": "object",
+          "required": ["primary"],
+          "properties": {
+            "primary": { "type": "string" },
+            "secondary": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "url": { "type": "string", "format": "uri" }
+          },
+          "additionalProperties": false
+        },
+        "specialty": {
+          "type": "object",
+          "required": ["primary_categories", "is_generalist"],
+          "properties": {
+            "primary_categories": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "is_generalist": { "type": "boolean" },
+            "niche_specialist": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        },
+        "metrics_at_selection": {
+          "type": "object",
+          "required": ["snapshot_date"],
+          "properties": {
+            "pnl_lifetime_usd": { "type": ["number", "null"] },
+            "trades_count": { "type": ["integer", "null"] },
+            "first_trade_date": { "type": ["string", "null"], "format": "date" },
+            "last_trade_date_observed": { "type": ["string", "null"], "format": "date" },
+            "cumulative_bet_volume_usd": { "type": ["number", "null"] },
+            "snapshot_date": { "type": "string", "format": "date" }
+          },
+          "additionalProperties": false
+        },
+        "profile": {
+          "type": "object",
+          "required": ["identity_public"],
+          "properties": {
+            "identity_public": { "type": "boolean" },
+            "prior_domain": { "type": ["string", "null"] },
+            "prediction_market_experience_since": { "type": ["integer", "null"] },
+            "geography": { "type": ["string", "null"] },
+            "username_history": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "social": {
+              "type": "object",
+              "properties": {
+                "twitter": { "type": ["string", "null"] }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "selection_rationale": {
+          "type": "object",
+          "required": ["meets_all_r4_criteria", "tier_a_signals", "risk_flags"],
+          "properties": {
+            "meets_all_r4_criteria": { "type": "boolean" },
+            "tier_a_signals": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            },
+            "risk_flags": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "validation": {
+          "type": "object",
+          "required": ["added_at", "added_by"],
+          "properties": {
+            "added_at": { "type": "string", "format": "date" },
+            "added_by": { "type": "string" },
+            "last_re_evaluated_at": { "type": ["string", "null"], "format": "date" },
+            "review_frequency_months": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
