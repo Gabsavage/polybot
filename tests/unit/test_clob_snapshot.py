@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from polybot.indexers.clob_snapshot import (
     build_snapshot_row,
@@ -86,7 +86,7 @@ def test_build_snapshot_row():
         "bid_depth_1pct": 3000.0,
         "ask_depth_1pct": 2300.0,
     }
-    ts = datetime(2026, 4, 21, 14, 0, 0, tzinfo=timezone.utc)
+    ts = datetime(2026, 4, 21, 14, 0, 0, tzinfo=UTC)
     row = build_snapshot_row("cond_1", "tok_yes", ts, book_data, volume_1h=15000.0)
     assert row["condition_id"] == "cond_1"
     assert row["token_id"] == "tok_yes"

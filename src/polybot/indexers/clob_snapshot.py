@@ -1,7 +1,7 @@
 """CLOB snapshot indexer — fetches order books for top markets, writes Parquet to R2."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import polars as pl
@@ -130,7 +130,7 @@ async def run_snapshot(settings: Settings, r2: R2Client) -> int:
     """
     import duckdb
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Load universe from DuckDB
     con = duckdb.connect(str(settings.DUCKDB_PATH), read_only=True)
@@ -192,7 +192,7 @@ async def refresh_snapshot_universe(settings: Settings) -> int:
         logger.warning("no markets passed volume filter")
         return 0
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     con = duckdb.connect(str(settings.DUCKDB_PATH))
 
     con.execute("DELETE FROM snapshot_universe")
@@ -200,10 +200,10 @@ async def refresh_snapshot_universe(settings: Settings) -> int:
         clob_token_ids = json.loads(m.get("clobTokenIds", "[]"))
         if len(clob_token_ids) < 2:
             continue
+        cols = "condition_id, token_id_yes, token_id_no"
+        cols += ", question_text, volume_24h_usd, refreshed_at"
         con.execute(
-            """INSERT INTO snapshot_universe
-               (condition_id, token_id_yes, token_id_no, question_text, volume_24h_usd, refreshed_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            f"INSERT INTO snapshot_universe ({cols}) VALUES (?, ?, ?, ?, ?, ?)",
             [
                 m["condition_id"],
                 clob_token_ids[0],

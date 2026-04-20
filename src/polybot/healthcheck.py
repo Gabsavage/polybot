@@ -1,6 +1,6 @@
 """Healthcheck — verify DuckDB connectivity, R2 access, and last snapshot freshness."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import duckdb
 import structlog
@@ -44,8 +44,8 @@ def check_last_snapshot(r2: R2Client) -> tuple[bool, str]:
         parts = latest.replace("snapshots/", "").replace(".parquet", "").split("/")
         if len(parts) == 2:
             ts = datetime.strptime(f"{parts[0]} {parts[1]}", "%Y-%m-%d %H")
-            ts = ts.replace(tzinfo=timezone.utc)
-            age_hours = (datetime.now(timezone.utc) - ts).total_seconds() / 3600
+            ts = ts.replace(tzinfo=UTC)
+            age_hours = (datetime.now(UTC) - ts).total_seconds() / 3600
             if age_hours > 2:
                 return False, f"Latest snapshot is {age_hours:.1f}h old: {latest}"
             return True, f"Latest snapshot: {latest} ({age_hours:.1f}h ago)"

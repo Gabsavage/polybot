@@ -10,7 +10,7 @@ def test_settings_defaults():
         R2_ACCESS_KEY_ID="test-key",
         R2_SECRET_ACCESS_KEY="test-secret",
     )
-    assert settings.DUCKDB_PATH == Path("data/pm.duckdb")
+    assert Path("data/pm.duckdb") == settings.DUCKDB_PATH
     assert settings.R2_BUCKET_NAME == "polybot-snapshots"
     assert settings.GAMMA_API_URL == "https://gamma-api.polymarket.com"
     assert settings.CLOB_API_URL == "https://clob.polymarket.com"
@@ -32,4 +32,4 @@ def test_settings_migrations_dir():
         R2_ACCESS_KEY_ID="key",
         R2_SECRET_ACCESS_KEY="secret",
     )
-    assert settings.MIGRATIONS_DIR == Path("migrations")
+    assert Path("migrations") == settings.MIGRATIONS_DIR
