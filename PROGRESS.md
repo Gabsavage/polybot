@@ -1,5 +1,47 @@
 # Polymarket Bot — Progress
 
+## 2026-04-22 — C4 Macro Discovery (exploration indépendante)
+
+> **Nota** : C4 est un composant exploratoire **séparé** du plan B (M1-M12).
+> Il s'agit d'un composant additionnel qui traderait systématiquement les marchés
+> macro US (CPI, NFP, FOMC, GDP, etc.) en exploitant les nowcasts des Federal
+> Reserve Banks régionales. Ce travail de discovery est un pré-requis avant toute
+> décision d'intégration dans le plan de dev.
+
+### Scan terrain Gamma API
+
+- Script `research/phase_c4_macro/scan_macro_markets.py` : scan exhaustif des ~51k marchés actifs Polymarket
+- Filtrage par keywords macro avec regex word-boundary + exclusion bruit (sports, pays non-US)
+- **225 marchés US macro actifs** identifiés, répartis en 4 catégories
+
+### Résultats clés
+
+| Catégorie | Marchés | Liquidité médiane | Liquidité totale | Vol 24h total |
+|-----------|---------|-------------------|------------------|---------------|
+| Fed       | 147     | $15k              | $19.2M           | $6.3M         |
+| CPI       | 41      | $3.8k             | $295k            | $24k          |
+| GDP       | 23      | $1.9k             | $62k             | $9.7k         |
+| Labor     | 14      | $3k               | $55k             | $1.8k         |
+
+### Observations terrain
+
+- **Fed rates = marché dominant** : 65% des marchés, >99% du volume. Top marché : $8.9M liquidity
+- **CPI/Inflation** : granularité fine (monthly/annual par tranche 0.1%), résolution 12 mai
+- **GDP** : Q1 2026, résolution 30 avril (advance estimate)
+- **Labor** : unemployment rate par tranche, résolution 8 mai (NFP)
+- **Gap** : aucun marché actif sur retail sales, PCE, PPI, ISM/PMI, jobless claims, housing starts, consumer confidence
+- **Prochaines résolutions** : FOMC 29 avril, GDP 30 avril, unemployment 8 mai, CPI 12 mai
+
+### Livrables
+
+| Fichier | Description |
+|---------|-------------|
+| `research/phase_c4_macro/scan_macro_markets.py` | Script de scan (~95 lignes) |
+| `research/phase_c4_macro/polymarket_macro_markets.csv` | 225 marchés, toutes colonnes |
+| `research/phase_c4_macro/polymarket_macro_markets.md` | Tableau de synthèse + observations |
+
+---
+
 ## 2026-04-22 — M1 COMPLETE (deployed + gate validated)
 
 ### M1 Deliverables
