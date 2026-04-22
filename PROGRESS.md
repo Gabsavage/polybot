@@ -1,57 +1,94 @@
-# Polycasquette — Progress
+# Polymarket Bot — Progress
 
-## 2026-04-20 — Phase C bouclée
+## 2026-04-22 — M1 deployed to prod, Tier A seed list complete
 
-- Ground truth enrichi (14/32 adresses via API Polymarket)
-- Notebook pilote Iran cluster exécuté end-to-end
-- Recall 71% (5/7 GT flaggés), Precision 50% (5/10 flags vrais)
-- Faille méthodologique identifiée : les heuristiques Niveau A ne distinguent pas insider gagnant vs contrariant perdant
-- Biais de survivorship documenté sur le GT (tous les cas médiatisés sont des gagnants)
-- Verdict : GO pour phase B avec 4 ajustements prioritaires dont un fondamental (alignement directionnel)
-- Design du bot ajusté : human-in-the-loop obligatoire, pas d'auto-trade
+### M1 Deliverables
 
-Next: 2-3 jours pause, puis phase B (plan de développement du bot)
+| Livrable | Status |
+|----------|--------|
+| Repo restructured (polybot package, src/ layout) | Done |
+| DuckDB schema (12 tables) + migration runner | Done |
+| Config module (pydantic-settings) | Done |
+| R2 storage wrapper (boto3) | Done |
+| CLOB snapshot indexer + refresh_universe | Done |
+| Healthcheck | Done |
+| Validation script | Done |
+| GitHub Actions CI (ruff + pytest) | Done |
+| systemd timers on VPS | Done, running |
+| Seed list 15 wallets | Done |
+
+### VPS Prod
+
+- Contabo VPS 10, Atlanta US ($4/mois)
+- 3 systemd timers: snapshot (hourly), universe-refresh (6h), healthcheck (6h)
+- First automated snapshot: 300 rows, 150 markets, 0 errors
+- Gate M1 preliminary at T+45min: all quantitative criteria met
+- Final gate pending 3-4h stability window
+
+### Tier A Discovery
+
+- Discovery script v2: portfolio value via /value endpoint, anti-bot filters, auto-classification
+- 3886 wallets scanned, 149 pre-filtered, 43 passed quantitative filters
+- 9 A1 + 11 A2 candidates identified
+- 9 wallets selected (5 A1 + 4 A2) to complete seed list to 15
+- Tier B watchlist: 23 borderline rejects for M7 re-evaluation
+
+### Documentation
+
+- 11 ADRs (ADR-001 to 011) consolidated in docs/ADRs/
+- Phase A ADRs migrated from A_architecture_technique.md §10
+- Gate M1 preliminary in GATES.md
+
+### Key metrics
+
+- Unit tests: 17/17 pass
+- R2 projection: 0.19 GB/year (52x margin on free tier)
+- VPS resources: 511 MB RAM (6.5%), 3.3 GB disk (2.3%)
+- Snapshot: 23.5 KB avg, 300 rows, ~6s CPU
+
+Next: Gate M1 final (after 3-4h stability), then M2 (indexers + trades polling)
 
 ---
 
-## Phase C — Détail
+## 2026-04-21 — M1 code complete (local)
 
-### Livrables produits
+- Repo restructured: polycasquette -> polybot, src/ layout
+- 11 commits: schema, config, R2, logging, indexer, healthcheck, validation, CI, README, deploy
+- 12/12 unit tests pass, lint clean
+- Integration tests: R2 connectivity OK, Gamma/CLOB APIs OK, 300 rows snapshot validated
+- research/ directory created, Phase C notebook moved
 
-| Fichier | Description |
-|---------|-------------|
-| `data/ground_truth/cases.csv` | 18 cas forensiques |
-| `data/ground_truth/wallets.csv` | 31 wallets (22 avec adresse, 71%) |
-| `data/ground_truth/sharps_positive.csv` | 9 sharps (6 avec adresse, 67%) |
-| `data/ground_truth/enrichment_log.md` | Log des lookups API Polymarket |
-| `data/ground_truth/iran_base_rate_investigation.csv` | 5 flags non-GT classifiés (tous faux positifs) |
-| `docs/C_plan_recherche_backtest.md` | Plan C v2 (12 expériences, gates) |
-| `docs/C_synthese_pilote.md` | Synthèse pilote Iran — résultats corrigés |
-| `docs/archive/C_plan_recherche_v1.md` | Plan C v1 archivé |
-| `notebooks/01_pilote_iran_cluster.ipynb` | Notebook pilote Iran (9 parties) |
-| `scripts/enrich_ground_truth.py` | Script enrichissement adresses |
+---
 
-### Résultats clés pilote Iran
+## 2026-04-20 — Phase C complete
 
-- **7/7 wallets GT retrouvés** via Data API publique
-- **Recall C2** : 5/7 = 71% (2 ratés : périphérique + camouflé)
-- **Precision C2** : 5/10 = 50% (5 FP : 2 contrariants perdants, 2 sharps géo, 1 indéterminé)
-- **F1** : 59%
-- **Correction majeure** : 2 wallets initialement classés "vrais informés" étaient des contrariants perdants (~$260K de pertes). Precision corrigée de 90% → 50%
+- Ground truth enriched (14/32 addresses via Polymarket API)
+- Pilot notebook Iran cluster executed end-to-end
+- Recall 71% (5/7), Precision 50% (5/10), F1 59%
+- 4 adjustments identified for Phase B
+- Tag: `phase-c-complete`
 
-### 4 ajustements identifiés pour phase B
+---
 
-1. **Alignement directionnel** (critique) — outcome_traded + realized_pnl pour distinguer insider vs contrariant
-2. **Features diversification** — nb_markets, pct_geopolitical, still_active_post_event
-3. **Clustering Victor 2020** — deposit-address-reuse via RPC Polygon
-4. **CEX funding source** — shared deposit detection via trace USDC
+## Phase C — Detail
 
-### Blocages connus
+### Deliverables
 
-| Problème | Impact | Contournement |
-|----------|--------|---------------|
-| CLOB `/trades` auth-only | Pas de vue marché-first | Data API par wallet + Dune pour leaderboard C1 |
-| CLOB `/prices-history` vide sur résolus | Pas de timeline prix native | Reconstitution depuis prix d'entrée des trades |
-| 12 adresses GT irrécupérables | Recall C2 max ~7/11 sur test set | Accepté comme limite structurelle |
-| Heuristiques direction-blind | 50% precision (contrariants flaggés) | Ajustement 1 : filtre directionnel post-résolution |
-| GT biaisé gagnants-only | Pas de ground truth sur contrariants | Documenter le biais, pas de fix possible |
+| File | Description |
+|------|-------------|
+| `data/ground_truth/cases.csv` | 18 forensic cases |
+| `data/ground_truth/wallets.csv` | 31 wallets (22 with address, 71%) |
+| `data/ground_truth/sharps_positive.csv` | 9 sharps (6 with address, 67%) |
+| `data/ground_truth/enrichment_log.md` | API lookup log |
+| `data/ground_truth/iran_base_rate_investigation.csv` | 5 non-GT flags (all FP) |
+| `research/phase_c/01_pilote_iran_cluster.ipynb` | Iran pilot notebook |
+| `scripts/enrich_ground_truth.py` | Address enrichment script |
+
+### Known limitations
+
+| Problem | Impact | Workaround |
+|---------|--------|------------|
+| CLOB `/trades` auth-only | No market-first view | Data API per wallet + Dune |
+| 12 GT addresses unrecoverable | Max recall ~7/11 | Accepted structural limit |
+| Direction-blind heuristics | 50% precision | Adjustment 1: directional filter |
+| GT biased winners-only | No contrarian ground truth | Document bias, no fix |
