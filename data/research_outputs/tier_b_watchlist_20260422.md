@@ -27,3 +27,23 @@ Wallets borderline rejected from Tier A. Re-evaluate in M7.
 | 0x362ea6c4dbaf... | KamAlla | $73,840 | 136 | 581 | 6 | erratic_activity | Reject : erratic_activity (136 trades / 581j) |
 | 0x5d189e816b41... | gloriafoster | $348,119 | 332 | 326 | 5 | erratic_activity | Reject : erratic_activity (332 trades / 326j) |
 | 0x8e5c0cc55cda... | cocos228 | $344,732 | 248 | 636 | 4 | erratic_activity | Reject : erratic_activity (248 trades / 636j) |
+
+---
+
+# Tier B Watchlist — A1/A2 candidates not retained (manual review)
+
+Wallets classified A1_candidate or A2_candidate by discovery v2 but not selected after manual review. Re-evaluate in M7.
+
+| Address | Alias | Auto-Tier | Portfolio | Trades | Days | Reason not selected |
+|---|---|---|---|---|---|---|
+| 0x45b39e1f71e4... | onekey09 | A1 | $1.15M | 897 | 190 | win_rate 95% suspect |
+| 0x2e3ea056400d... | HDGB | A1 | $125K | 1140 | 233 | portfolio modest, history short |
+| 0x614dc8d3542c... | mr.ozi | A1 | $543K | 3100 | 429 | solid but prioritized others |
+| 0x011f2d377e56... | 11122 | A1 | $535K | 3100 | 292 | solid but prioritized others |
+| 0x510904c9a58f... | Logan. | A2 | $87K | 3100 | 319 | solid A2 but prioritized others |
+| 0x6480542954b7... | tripping | A2 | $39K | 2299 | 383 | portfolio low after likely withdrawals |
+| 0x4e25605fd905... | (no alias) | A2 | $655K | 3100 | 122 | anonymous, short history, high win rate |
+| 0x095dcfb123a4... | Contrarian-7451 | A2 | $1.05M | 268 | 139 | intriguing but young (139d) |
+| 0x40047c2a7f97... | 0xrc | A2 | $313K | 230 | 103 | history too short |
+| 0x16bd7cc71f6d... | ddalkkak | A2 | $88K | 890 | 383 | temporal_consistency borderline |
+| 0xb886580698ed... | (proxy-like) | A2 | $154K | 2169 | 107 | suspicious alias format |

@@ -11,7 +11,7 @@
 #   suffisant pour Tier A
 
 version: 1
-last_updated: "2026-04-21"
+last_updated: "2026-04-22"
 schema_version: "1.0"
 
 wallets:
@@ -270,4 +270,381 @@ wallets:
       added_at: "2026-04-21"
       added_by: "manual_review_gab"
       last_re_evaluated_at: "2026-04-21"
+      review_frequency_months: 6
+
+  # --- Discovery v2 additions (2026-04-22) ---
+
+  - address: "0x0c0e270cf879583d6a0142fc817e05b768d0434e"
+    alias: "The Spirit of Ukraine>UMA"
+    tier: "A"
+    confidence: "A1"
+    source:
+      primary: "discovery_v2_20260422"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0x0c0e270cf879583d6a0142fc817e05b768d0434e"
+    specialty:
+      primary_categories: ["geopolitics", "politics", "culture"]
+      is_generalist: true
+      niche_specialist: null
+    metrics_at_selection:
+      pnl_lifetime_usd: null
+      trades_count: 2716
+      first_trade_date: "2022-12-12"
+      last_trade_date_observed: "2026-04-22"
+      cumulative_bet_volume_usd: null
+      snapshot_date: "2026-04-22"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: 2022
+      geography: null
+      username_history:
+        - "The Spirit of Ukraine>UMA"
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: true
+      tier_a_signals:
+        - "1226_days_active_longest_track_record"
+        - "2716_trades_6_categories"
+        - "539K_portfolio_value"
+      risk_flags: []
+    validation:
+      added_at: "2026-04-22"
+      added_by: "discovery_v2_validated_gab"
+      last_re_evaluated_at: "2026-04-22"
+      review_frequency_months: 6
+
+  - address: "0xc6587b11a2209e46dfe3928b31c5514a8e33b784"
+    alias: "Erasmus."
+    tier: "A"
+    confidence: "A1"
+    source:
+      primary: "discovery_v2_20260422"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0xc6587b11a2209e46dfe3928b31c5514a8e33b784"
+    specialty:
+      primary_categories: ["politics", "geopolitics", "sports", "culture"]
+      is_generalist: true
+      niche_specialist: null
+    metrics_at_selection:
+      pnl_lifetime_usd: null
+      trades_count: 3100
+      first_trade_date: "2024-08-02"
+      last_trade_date_observed: "2026-04-21"
+      cumulative_bet_volume_usd: null
+      snapshot_date: "2026-04-22"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: 2024
+      geography: null
+      username_history:
+        - "Erasmus."
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: true
+      tier_a_signals:
+        - "1.39M_portfolio_highest_A1"
+        - "3100+_trades_6_categories"
+        - "627_days_active"
+      risk_flags: []
+    validation:
+      added_at: "2026-04-22"
+      added_by: "discovery_v2_validated_gab"
+      last_re_evaluated_at: "2026-04-22"
+      review_frequency_months: 6
+
+  - address: "0x000d257d2dc7616feaef4ae0f14600fdf50a758e"
+    alias: "scottilicious"
+    tier: "A"
+    confidence: "A1"
+    source:
+      primary: "discovery_v2_20260422"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0x000d257d2dc7616feaef4ae0f14600fdf50a758e"
+    specialty:
+      primary_categories: ["politics", "geopolitics", "culture"]
+      is_generalist: true
+      niche_specialist: null
+    metrics_at_selection:
+      pnl_lifetime_usd: null
+      trades_count: 3100
+      first_trade_date: "2025-05-18"
+      last_trade_date_observed: "2026-04-21"
+      cumulative_bet_volume_usd: null
+      snapshot_date: "2026-04-22"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: 2025
+      geography: null
+      username_history:
+        - "scottilicious"
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: true
+      tier_a_signals:
+        - "987K_portfolio_value"
+        - "3100+_trades_6_categories"
+        - "338_days_high_volume"
+      risk_flags: []
+    validation:
+      added_at: "2026-04-22"
+      added_by: "discovery_v2_validated_gab"
+      last_re_evaluated_at: "2026-04-22"
+      review_frequency_months: 6
+
+  - address: "0x9703676286b93c2eca71ca96e8757104519a69c2"
+    alias: "TheMangler"
+    tier: "A"
+    confidence: "A1"
+    source:
+      primary: "discovery_v2_20260422"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0x9703676286b93c2eca71ca96e8757104519a69c2"
+    specialty:
+      primary_categories: ["politics", "geopolitics"]
+      is_generalist: false
+      niche_specialist: null
+    metrics_at_selection:
+      pnl_lifetime_usd: null
+      trades_count: 2018
+      first_trade_date: "2024-10-01"
+      last_trade_date_observed: "2026-04-17"
+      cumulative_bet_volume_usd: null
+      snapshot_date: "2026-04-22"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: 2024
+      geography: null
+      username_history:
+        - "TheMangler"
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: true
+      tier_a_signals:
+        - "489K_portfolio_value"
+        - "2018_trades_562_days"
+        - "consistent_low_tpd_median_3"
+      risk_flags:
+        - "lower_category_count_4_vs_6_standard"
+    validation:
+      added_at: "2026-04-22"
+      added_by: "discovery_v2_validated_gab"
+      last_re_evaluated_at: "2026-04-22"
+      review_frequency_months: 6
+
+  - address: "0xf5198df69e13937a40d1c76d6f72d9aa067d906b"
+    alias: "sbimbg"
+    tier: "A"
+    confidence: "A1"
+    source:
+      primary: "discovery_v2_20260422"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0xf5198df69e13937a40d1c76d6f72d9aa067d906b"
+    specialty:
+      primary_categories: ["politics", "geopolitics", "sports", "culture"]
+      is_generalist: true
+      niche_specialist: null
+    metrics_at_selection:
+      pnl_lifetime_usd: null
+      trades_count: 1728
+      first_trade_date: "2024-11-15"
+      last_trade_date_observed: "2026-04-22"
+      cumulative_bet_volume_usd: null
+      snapshot_date: "2026-04-22"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: 2024
+      geography: null
+      username_history:
+        - "sbimbg"
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: true
+      tier_a_signals:
+        - "1728_trades_6_categories"
+        - "522_days_active"
+        - "consistent_low_tpd_median_4"
+      risk_flags:
+        - "portfolio_105k_borderline_vs_100k_threshold"
+    validation:
+      added_at: "2026-04-22"
+      added_by: "discovery_v2_validated_gab"
+      last_re_evaluated_at: "2026-04-22"
+      review_frequency_months: 6
+
+  - address: "0xc1b399b26020a4f689108e9640fd3dc8ffc8501c"
+    alias: "CoffeeLover"
+    tier: "A"
+    confidence: "A2"
+    source:
+      primary: "discovery_v2_20260422"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0xc1b399b26020a4f689108e9640fd3dc8ffc8501c"
+    specialty:
+      primary_categories: ["politics", "culture", "sports"]
+      is_generalist: true
+      niche_specialist: null
+    metrics_at_selection:
+      pnl_lifetime_usd: null
+      trades_count: 3100
+      first_trade_date: "2025-06-22"
+      last_trade_date_observed: "2026-04-22"
+      cumulative_bet_volume_usd: null
+      snapshot_date: "2026-04-22"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: 2025
+      geography: null
+      username_history:
+        - "CoffeeLover"
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: false
+      tier_a_signals:
+        - "3100+_trades_6_categories"
+        - "303_days_active"
+        - "high_volume_diverse"
+      risk_flags:
+        - "portfolio_82k_below_a1_threshold"
+    validation:
+      added_at: "2026-04-22"
+      added_by: "discovery_v2_validated_gab"
+      last_re_evaluated_at: "2026-04-22"
+      review_frequency_months: 6
+
+  - address: "0x16cbe223607a6513ae76d1e3751c78e4eabc2704"
+    alias: "MRF"
+    tier: "A"
+    confidence: "A2"
+    source:
+      primary: "discovery_v2_20260422"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0x16cbe223607a6513ae76d1e3751c78e4eabc2704"
+    specialty:
+      primary_categories: ["politics", "geopolitics", "sports"]
+      is_generalist: true
+      niche_specialist: null
+    metrics_at_selection:
+      pnl_lifetime_usd: null
+      trades_count: 3100
+      first_trade_date: "2025-09-02"
+      last_trade_date_observed: "2026-04-21"
+      cumulative_bet_volume_usd: null
+      snapshot_date: "2026-04-22"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: 2025
+      geography: null
+      username_history:
+        - "MRF"
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: false
+      tier_a_signals:
+        - "3100+_trades_5_categories"
+        - "108K_portfolio_value"
+        - "231_days_active"
+      risk_flags:
+        - "days_active_231_relatively_short_for_a1"
+    validation:
+      added_at: "2026-04-22"
+      added_by: "discovery_v2_validated_gab"
+      last_re_evaluated_at: "2026-04-22"
+      review_frequency_months: 6
+
+  - address: "0xf9f207b77137caa79c6c4516abdef3133db45cba"
+    alias: "extractive-manatee"
+    tier: "A"
+    confidence: "A2"
+    source:
+      primary: "discovery_v2_20260422"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0xf9f207b77137caa79c6c4516abdef3133db45cba"
+    specialty:
+      primary_categories: ["politics", "geopolitics", "culture"]
+      is_generalist: true
+      niche_specialist: null
+    metrics_at_selection:
+      pnl_lifetime_usd: null
+      trades_count: 2651
+      first_trade_date: "2025-01-20"
+      last_trade_date_observed: "2026-04-21"
+      cumulative_bet_volume_usd: null
+      snapshot_date: "2026-04-22"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: 2025
+      geography: null
+      username_history:
+        - "extractive-manatee"
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: false
+      tier_a_signals:
+        - "2651_trades_6_categories"
+        - "455_days_active_long_track_record"
+        - "consistent_tpd_median_6"
+      risk_flags:
+        - "portfolio_43k_low_possibly_withdrawn_gains"
+    validation:
+      added_at: "2026-04-22"
+      added_by: "discovery_v2_validated_gab"
+      last_re_evaluated_at: "2026-04-22"
+      review_frequency_months: 6
+
+  - address: "0x8597ca63e722d6216bfc3057591fdc67ec49daee"
+    alias: "Mr-Krabs"
+    tier: "A"
+    confidence: "A2"
+    source:
+      primary: "discovery_v2_20260422"
+      secondary: ["polymarket_profile"]
+      url: "https://polymarket.com/profile/0x8597ca63e722d6216bfc3057591fdc67ec49daee"
+    specialty:
+      primary_categories: ["politics", "geopolitics", "sports", "culture"]
+      is_generalist: true
+      niche_specialist: null
+    metrics_at_selection:
+      pnl_lifetime_usd: null
+      trades_count: 1450
+      first_trade_date: "2025-02-03"
+      last_trade_date_observed: "2026-04-22"
+      cumulative_bet_volume_usd: null
+      snapshot_date: "2026-04-22"
+    profile:
+      identity_public: false
+      prior_domain: null
+      prediction_market_experience_since: 2025
+      geography: null
+      username_history:
+        - "Mr-Krabs"
+      social:
+        twitter: null
+    selection_rationale:
+      meets_all_r4_criteria: false
+      tier_a_signals:
+        - "1450_trades_6_categories"
+        - "442_days_active"
+        - "consistent_low_tpd_median_3"
+      risk_flags:
+        - "portfolio_88k_below_a1_threshold"
+    validation:
+      added_at: "2026-04-22"
+      added_by: "discovery_v2_validated_gab"
+      last_re_evaluated_at: "2026-04-22"
       review_frequency_months: 6
