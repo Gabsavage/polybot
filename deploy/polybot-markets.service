@@ -1,0 +1,13 @@
+[Unit]
+Description=Polybot Markets Gamma indexer
+After=network.target
+
+[Service]
+Type=oneshot
+User=polybot
+WorkingDirectory=/opt/polybot
+ExecStart=/opt/polybot/.venv/bin/python -m polybot.indexers.markets_gamma
+Environment=PYTHONPATH=/opt/polybot/src
+EnvironmentFile=/opt/polybot/.env
+StandardOutput=append:/var/log/polybot/markets-gamma.log
+StandardError=append:/var/log/polybot/markets-gamma.log

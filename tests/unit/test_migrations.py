@@ -18,8 +18,10 @@ M1_TABLES = [
     "snapshot_universe",
 ]
 
+M2_TABLES = M1_TABLES + ["indexer_state"]
 
-def test_apply_migrations_creates_m1_tables(tmp_path: Path):
+
+def test_apply_migrations_creates_all_tables(tmp_path: Path):
     db_path = tmp_path / "test.duckdb"
     migrations_dir = Path(__file__).parents[2] / "migrations"
     apply_migrations(str(db_path), str(migrations_dir))
@@ -28,7 +30,7 @@ def test_apply_migrations_creates_m1_tables(tmp_path: Path):
     tables = [row[0] for row in con.execute("SHOW TABLES").fetchall()]
     con.close()
 
-    for table in M1_TABLES:
+    for table in M2_TABLES:
         assert table in tables, f"Missing table: {table}"
 
 
@@ -42,7 +44,7 @@ def test_apply_migrations_idempotent(tmp_path: Path):
     tables = [row[0] for row in con.execute("SHOW TABLES").fetchall()]
     con.close()
 
-    for table in M1_TABLES:
+    for table in M2_TABLES:
         assert table in tables
 
 
@@ -57,5 +59,6 @@ def test_migrations_tracking(tmp_path: Path):
     ).fetchall()
     con.close()
 
-    assert len(applied) == 1
+    assert len(applied) == 2
     assert applied[0][0] == "001_initial_schema.sql"
+    assert applied[1][0] == "002_m2_schema_alignment.sql"

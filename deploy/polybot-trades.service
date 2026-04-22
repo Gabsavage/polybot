@@ -1,0 +1,18 @@
+[Unit]
+Description=Polybot Data API trades indexer daemon
+After=network.target
+
+[Service]
+Type=simple
+User=polybot
+WorkingDirectory=/opt/polybot
+ExecStart=/opt/polybot/.venv/bin/python -m polybot.indexers.trades_dataapi
+Environment=PYTHONPATH=/opt/polybot/src
+EnvironmentFile=/opt/polybot/.env
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/polybot/trades-dataapi.log
+StandardError=append:/var/log/polybot/trades-dataapi.log
+
+[Install]
+WantedBy=multi-user.target
