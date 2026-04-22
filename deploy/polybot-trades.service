@@ -4,11 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=polybot
-WorkingDirectory=/opt/polybot
-ExecStart=/opt/polybot/.venv/bin/python -m polybot.indexers.trades_dataapi
-Environment=PYTHONPATH=/opt/polybot/src
-EnvironmentFile=/opt/polybot/.env
+WorkingDirectory=/root/polybot
+ExecStart=/root/.local/bin/uv run --directory /root/polybot python -m polybot.indexers.trades_dataapi
+Environment=PYTHONPATH=/root/polybot/src
 Restart=always
 RestartSec=10
 StandardOutput=append:/var/log/polybot/trades-dataapi.log

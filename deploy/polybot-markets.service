@@ -4,10 +4,8 @@ After=network.target
 
 [Service]
 Type=oneshot
-User=polybot
-WorkingDirectory=/opt/polybot
-ExecStart=/opt/polybot/.venv/bin/python -m polybot.indexers.markets_gamma
-Environment=PYTHONPATH=/opt/polybot/src
-EnvironmentFile=/opt/polybot/.env
+WorkingDirectory=/root/polybot
+ExecStart=/root/.local/bin/uv run --directory /root/polybot python -m polybot.indexers.markets_gamma
+Environment=PYTHONPATH=/root/polybot/src
 StandardOutput=append:/var/log/polybot/markets-gamma.log
 StandardError=append:/var/log/polybot/markets-gamma.log
