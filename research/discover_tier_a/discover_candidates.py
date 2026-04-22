@@ -27,7 +27,7 @@ DATA_API = "https://data-api.polymarket.com"
 GAMMA_API = "https://gamma-api.polymarket.com"
 
 # Rate limiting: ~1 req/s to be safe with Data API
-REQUEST_DELAY = 1.0
+REQUEST_DELAY = 0.3
 
 
 def load_known_sharps(path: str = "data/ground_truth/sharps_positive.csv") -> set[str]:
@@ -136,18 +136,23 @@ def discover_wallets_from_holders(market_ids: list[str]) -> dict[str, dict]:
     return wallets
 
 
-def fetch_wallet_trades(address: str, limit: int = 5000) -> list[dict]:
-    """Fetch all trades for a wallet via Data API /trades (paginated)."""
+def fetch_wallet_trades(address: str, max_trades: int = 500) -> list[dict]:
+    """Fetch trades for a wallet via Data API /trades (offset pagination).
+
+    Caps at max_trades to avoid infinite loops on very active wallets.
+    """
     all_trades = []
-    cursor = None
+    offset = 0
+    page_size = 100
+    max_pages = max_trades // page_size
 
-    while len(all_trades) < limit:
-        params = {"user": address, "limit": 100}
-        if cursor:
-            params["cursor"] = cursor
-
+    for _page in range(max_pages):
         try:
-            resp = httpx.get(f"{DATA_API}/trades", params=params, timeout=30)
+            resp = httpx.get(
+                f"{DATA_API}/trades",
+                params={"user": address, "limit": page_size, "offset": offset},
+                timeout=15,
+            )
             if resp.status_code != 200:
                 break
             trades = resp.json()
@@ -155,14 +160,11 @@ def fetch_wallet_trades(address: str, limit: int = 5000) -> list[dict]:
                 break
             all_trades.extend(trades)
 
-            # Data API uses cursor-based pagination via the last item's timestamp
-            if len(trades) < 100:
+            if len(trades) < page_size:
                 break
-            cursor = trades[-1].get("timestamp")
-            if not cursor:
-                break
+            offset += page_size
         except Exception as e:
-            print(f"    [WARN] trades fetch error for {address[:12]}...: {e}")
+            print(f"    [WARN] trades fetch error for {address[:12]}...: {e}", flush=True)
             break
 
         time.sleep(REQUEST_DELAY)
@@ -384,7 +386,7 @@ def main():
     # Pre-filter: only wallets seen in >= 3 markets (to reduce API calls)
     prefiltered = {
         addr: info for addr, info in filtered_pool.items()
-        if len(info["markets_seen"]) >= 3
+        if len(info["markets_seen"]) >= 5
     }
     print(f"After pre-filter (>= 3 markets): {len(prefiltered)} wallets")
 
@@ -444,7 +446,7 @@ def main():
             **metrics,
         })
 
-        if (i + 1) % 50 == 0:
+        if (i + 1) % 25 == 0:
             print(f"  Progress: {i+1}/{len(prefiltered)}, {len(candidates)} candidates so far")
 
     print("\n--- Filter results ---")
