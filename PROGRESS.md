@@ -1,6 +1,6 @@
 # Polymarket Bot — Progress
 
-## 2026-04-22 — M1 deployed to prod, Tier A seed list complete
+## 2026-04-22 — M1 COMPLETE (deployed + gate validated)
 
 ### M1 Deliverables
 
@@ -46,7 +46,12 @@
 - VPS resources: 511 MB RAM (6.5%), 3.3 GB disk (2.3%)
 - Snapshot: 23.5 KB avg, 300 rows, ~6s CPU
 
-Next: Gate M1 final (after 3-4h stability), then M2 (indexers + trades polling)
+### M1 Final Gate — VALIDATED
+
+- Date : 2026-04-22 15:15 CEST (T+3h after deployment)
+- All quantitative criteria met, qualitative validation passed
+- Decision : GO
+- Next : M2 (indexer trades + indexer markets)
 
 ---
 
