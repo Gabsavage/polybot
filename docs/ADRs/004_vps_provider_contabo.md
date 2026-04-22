@@ -1,37 +1,29 @@
 # ADR-004: VPS Provider — Contabo Atlanta
 
-**Date:** 2026-04-22
-**Status:** Accepted
-**Deciders:** Gab
+**Date**: 2026-04-22
+**Status**: Accepted
+**Milestone**: M1
 
 ## Context
 
-M1 requires a VPS to run CLOB snapshot indexer (hourly), universe refresh (6h), and healthcheck (6h) as systemd timers. Polymarket APIs are geo-blocked outside the US, so the VPS must have a US IP.
+M1 requires a VPS to run CLOB snapshot indexer (hourly), universe refresh (6h), and healthcheck (6h) as systemd timers. Polymarket APIs are geo-blocked outside the US, so the VPS must have a US IP. Need 4+ GB RAM for DuckDB + concurrent Python processes.
+
+## Options considered
+
+- **Hetzner CX22 Nuremberg**: 2 vCPU, 4 GB, 40 GB, ~5 EUR. Geo-blocked by Polymarket — requires WireGuard/VPN overlay (extra complexity + cost).
+- **Hetzner CPX11 Ashburn**: 2 vCPU, 2 GB, 40 GB, ~$4.50. Only 2 GB RAM, tight for DuckDB + Python.
+- **Hetzner CPX21 Ashburn**: 3 vCPU, 4 GB, 80 GB, ~$8. Good but 2x cost of Contabo for less RAM.
+- **Contabo VPS 10 Atlanta**: 4 vCPU, 8 GB RAM, 75 GB NVMe, $4/mois. Best price/performance ratio.
+- **Vultr/DigitalOcean US**: 2 vCPU, 4 GB at $12-24/mois. Expensive for a side project.
 
 ## Decision
 
-Contabo Cloud VPS 10, Carlstadt NJ (US-East), $4/mois.
-
-Specs: 4 vCPU, 8 GB RAM, 75 GB NVMe SSD, unlimited traffic.
-
-## Alternatives Considered
-
-| Provider | Location | Specs | Cost | Issue |
-|----------|----------|-------|------|-------|
-| Hetzner CX22 | Nuremberg DE | 2 vCPU, 4 GB, 40 GB | ~5 EUR | Geo-blocked by Polymarket, needs VPN overlay |
-| Hetzner CPX11 | Ashburn US | 2 vCPU, 2 GB, 40 GB | ~$4.50 | Only 2 GB RAM, tight for DuckDB + Python |
-| Hetzner CPX21 | Ashburn US | 3 vCPU, 4 GB, 80 GB | ~$8 | 2x cost of Contabo for less RAM |
-| Vultr | US | 2 vCPU, 4 GB | ~$24 | Expensive |
-
-## Rationale
-
-- **US location eliminates VPN complexity.** No WireGuard/Mullvad needed. Direct API access, simpler ops, one less failure mode.
-- **8 GB RAM for $4/mois.** DuckDB can be RAM-hungry on analytical queries. 8 GB gives headroom for M7+ enrichment jobs.
-- **Contabo reputation trade-off.** Less reliable than Hetzner (occasional network issues reported on forums). Acceptable for a side project — redeploy to Hetzner US in 30 min if Contabo becomes unreliable.
-- **75 GB SSD.** Sufficient for DuckDB hot storage + Python venv. R2 handles cold Parquet storage.
+Contabo Cloud VPS 10, Carlstadt NJ (US-East), $4/mois. 4 vCPU, 8 GB RAM, 75 GB NVMe SSD.
 
 ## Consequences
 
-- Monitoring uptime manually for first month (no auto-failover)
-- If Contabo unreliable after 1 month, migrate to Hetzner CPX21 Ashburn ($8/mois)
-- VPS IP: 62.146.230.73 (Carlstadt NJ)
+- US location eliminates VPN complexity — direct API access, simpler ops
+- 8 GB RAM gives headroom for M7+ enrichment jobs without upgrade
+- $4/mois keeps infra well under the 30 EUR/mois budget cap
+- Risk: Contabo less reliable than Hetzner (occasional network issues reported). Acceptable for side project — redeploy to Hetzner US in 30 min if needed
+- Monitoring uptime manually for first month
