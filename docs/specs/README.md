@@ -8,6 +8,7 @@ Technical specs for each bot component and indexer. Used as reference when imple
 |------|-----------|-----------|--------|
 | [indexer_trades_spec.md](indexer_trades_spec.md) | Indexer Trades | M2 | Draft |
 | [c1_sharp_money_spec.md](c1_sharp_money_spec.md) | C1 Sharp Money Copy | M4 | Draft |
+| [c2_informed_trading_spec.md](c2_informed_trading_spec.md) | C2 Informed Trading | M6 | Draft |
 | [m3_enrichment_spec.md](m3_enrichment_spec.md) | M3 Enrichment Layer (proxy-EOA, resolutions, goldsky, volume_1h) | M3 | Draft |
 
 ## Template
