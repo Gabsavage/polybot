@@ -25,3 +25,7 @@ DuckDB. Single file at `data/pm.duckdb`, migrations via lightweight Python runne
 - Single-file deployment — easy backup, easy rsync to VPS
 - No concurrent write support (single writer at a time) — not a problem for a sequential bot
 - Schema managed via versioned SQL migrations in `migrations/`
+
+## Notes
+
+This decision was originally made in phase A (A_architecture_technique.md §10, ADR-002 "DuckDB + Parquet vs Postgres") and confirmed in M1 implementation. The phase A ADR is superseded by this one.

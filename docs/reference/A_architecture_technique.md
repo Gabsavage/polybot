@@ -1130,31 +1130,9 @@ Le split 50/30/20 (LLM / rules dynamiques / oracle reliability) est une premièr
 
 ## 10. Architecture Decision Records (ADR)
 
-Log des décisions structurantes et de leurs motivations. À compléter en cours de dev.
+Tous les ADRs du projet sont maintenant centralisés dans `docs/ADRs/`. Voir `docs/ADRs/README.md` pour l'index complet.
 
-**ADR-001 — Polling 60s plutôt que WebSocket pour C1**
-- Décision : polling CLOB toutes les 60s sur wallets trackés.
-- Motivation : latence cible < 2 min atteinte, complexité WebSocket (reconnect, reorgs, state machine) pas justifiée pour un bot aidant un humain qui va de toute façon mettre 2-5 min à ouvrir Polymarket et trader.
-- Trade-off accepté : si un sharp entre et sort en < 60s on peut rater, mais c'est un cas rare pour des trades de taille significative.
-
-**ADR-002 — DuckDB + Parquet plutôt que Postgres**
-- Décision : DuckDB hot + Parquet cold, pas de RDBMS server.
-- Motivation : workload analytique > transactionnel, zéro ops, fichier unique facile à backup, écosystème polars/DuckDB natif. Single-writer contrainte acceptable pour un solo dev.
-- Trade-off : si multi-writer devient critique, migration vers Postgres possible (schéma compatible).
-
-**ADR-003 — Hybride LLM + rules pour C3**
-- Décision : Claude Haiku appelé une fois par marché au création, cache permanent. Rules dynamiques au moment du scoring.
-- Motivation : coût négligeable, qualité sémantique bien supérieure à du pur rule-based sur les questions mal rédigées. Cache évite les appels répétés.
-- Alternative rejetée : GPT-4o — plus cher, pas significativement meilleur sur cette tâche classification.
-
-**ADR-004 — Pas d'exécution automatique en v1**
-- Décision : bot émet signaux + sizing, opérateur humain exécute manuellement sur Polymarket.
-- Motivation : contrainte brief (risques CASP/MiCA si copy-trading auto publié). Surtout, human-in-the-loop protège des bugs catastrophiques de v1.
-- Révision possible en v2 après 3-6 mois de track record validé.
-
-**ADR-005 — Proxy↔EOA mapping obligatoire en v1**
-- Décision : indexer_proxy_factory livré en semaine 1, avant tout composant de scoring.
-- Motivation : sans ça, métriques per-user faussées (rapport 4 §9.5), leaderboard wallets produit des fantômes et des doublons.
+ADRs historiques phase A : ADR-008 à ADR-011 (migrés de la version 1.0 de ce document).
 
 ---
 
