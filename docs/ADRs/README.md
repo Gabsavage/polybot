@@ -17,6 +17,7 @@ Documenting significant technical decisions for the Polymarket Bot project.
 | [009](009_hybrid_llm_rules_c3.md) | Hybrid LLM + rules for C3 Resolution Risk | Phase A | Accepted |
 | [010](010_no_auto_execution_v1.md) | No automatic trade execution in v1 | Phase A | Accepted |
 | [011](011_proxy_eoa_mapping_mandatory.md) | Proxy-EOA mapping mandatory before scoring | Phase A | Accepted |
+| [012](012_utc_timestamps_r2_naming.md) | UTC timestamps for R2 snapshot file naming | M1 | Accepted |
 
 ## Template
 

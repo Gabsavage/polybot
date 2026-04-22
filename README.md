@@ -79,3 +79,12 @@ data/research_outputs/  Research script outputs
 docs/                   Architecture, plans, research docs
 config/                 YAML config files (wallets, thresholds)
 ```
+
+## Timezone conventions
+
+- systemd logs on VPS display local time (CEST/CET) based on server timezone
+- R2 snapshot files use UTC in their names: `snapshots/YYYY-MM-DD/HH.parquet`
+- All timestamps in DuckDB tables are stored in UTC
+- When querying or correlating, always normalize to UTC
+
+See [ADR-012](docs/ADRs/012_utc_timestamps_r2_naming.md) for rationale.
