@@ -152,27 +152,18 @@ def map_market(m: dict) -> tuple:
     )
 
 
-UPSERT_SQL = """
-INSERT OR REPLACE INTO markets (
-    condition_id, question_id, question_text, description, category,
-    tags, outcomes, neg_risk, resolution_source, resolution_date,
-    created_at, closed_at, volume_cumulative_usd, liquidity_usd,
-    status, last_synced_at,
-    title, slug, event_slug, volume_24h, volume_1h,
-    end_date, start_date, active, resolved
-) VALUES (
-    ?, ?, ?, ?, ?,
-    ?, ?, ?, ?, ?,
-    ?, ?, ?, ?,
-    ?, ?,
-    ?, ?, ?, ?, ?,
-    ?, ?, ?, ?
-)
-"""
+COLUMNS = [
+    "condition_id", "question_id", "question_text", "description", "category",
+    "tags", "outcomes", "neg_risk", "resolution_source", "resolution_date",
+    "created_at", "closed_at", "volume_cumulative_usd", "liquidity_usd",
+    "status", "last_synced_at",
+    "title", "slug", "event_slug", "volume_24h", "volume_1h",
+    "end_date", "start_date", "active", "resolved",
+]
 
 
 def upsert_markets(db_path: str, markets: list[dict]) -> int:
-    """Upsert markets into DuckDB. Returns count of rows upserted."""
+    """Upsert markets into DuckDB via bulk temp table + INSERT OR REPLACE."""
     if not markets:
         return 0
 
@@ -187,9 +178,33 @@ def upsert_markets(db_path: str, markets: list[dict]) -> int:
     if skipped:
         logger.info("skipped_markets_no_condition_id", count=skipped)
 
+    if not rows:
+        return 0
+
+    import pyarrow as pa
+
+    # Build Arrow table for bulk insert
+    cols_data: dict[str, list] = {col: [] for col in COLUMNS}
+    for row in rows:
+        for i, col in enumerate(COLUMNS):
+            cols_data[col].append(row[i])
+
+    staging_data = pa.table(cols_data)  # noqa: F841 (referenced by DuckDB SQL)
+
+    upsert_start = time.monotonic()
     con = duckdb.connect(db_path)
-    con.executemany(UPSERT_SQL, rows)
+    con.execute(
+        "CREATE OR REPLACE TEMP TABLE _staging AS SELECT * FROM staging_data"
+    )
+    cols_str = ", ".join(COLUMNS)
+    con.execute(
+        f"INSERT OR REPLACE INTO markets ({cols_str}) "
+        f"SELECT {cols_str} FROM _staging"
+    )
+    con.execute("DROP TABLE IF EXISTS _staging")
     con.close()
+    upsert_ms = int((time.monotonic() - upsert_start) * 1000)
+    logger.info("upsert_complete", count=len(rows), upsert_ms=upsert_ms)
 
     return len(rows)
 
