@@ -380,6 +380,20 @@ Ajouter 3 timers (en plus des 3 existants M1) :
 4. End-to-end : apres 6h de run, les 15 wallets Tier A doivent avoir
    leurs EOAs mappes dans `proxy_eoa_map`
 
+## Composants reportes (decision 2026-04-24)
+
+- **`indexer_onchain_goldsky`** : reporte. Le subgraph Goldsky
+  (`polymarket-orderbook-resync/prod`) est bloque au block 81.2M
+  (donnees de ~jan 2026), 108 jours en retard. Aucun autre subgraph
+  Goldsky Polymarket disponible. La table `trades_all` reste vide
+  jusqu'a ce qu'une source de donnees a jour soit identifiee.
+- **`populate_volume_1h`** : reporte. Depend de `trades_all` (Goldsky).
+  La colonne `volume_1h` reste NULL conformement a ADR-006.
+
+M3 se cloture avec 2/4 composants livres :
+1. `indexer_proxy_factory` ✓
+2. `indexer_resolutions_uma` ✓
+
 ## A ne PAS faire en M3
 
 - Clustering Victor (reporte M10, cf plan B)

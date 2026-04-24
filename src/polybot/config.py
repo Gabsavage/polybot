@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     R2_ENDPOINT: str  # full URL e.g. https://<account_id>.r2.cloudflarestorage.com/...
     R2_BUCKET: str = "polybot-snapshots"
 
+    # Alchemy RPC (Polygon)
+    ALCHEMY_POLYGON_URL: str = ""
+
     # Polymarket APIs
     GAMMA_API_URL: str = "https://gamma-api.polymarket.com"
     CLOB_API_URL: str = "https://clob.polymarket.com"

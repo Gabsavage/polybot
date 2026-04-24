@@ -59,6 +59,7 @@ def test_migrations_tracking(tmp_path: Path):
     ).fetchall()
     con.close()
 
-    assert len(applied) == 2
+    assert len(applied) == 3
     assert applied[0][0] == "001_initial_schema.sql"
     assert applied[1][0] == "002_m2_schema_alignment.sql"
+    assert applied[2][0] == "003_m3_enrichment_tables.sql"

@@ -19,6 +19,7 @@ Documenting significant technical decisions for the Polymarket Bot project.
 | [011](011_proxy_eoa_mapping_mandatory.md) | Proxy-EOA mapping mandatory before scoring | Phase A | Accepted |
 | [012](012_utc_timestamps_r2_naming.md) | UTC timestamps for R2 snapshot file naming | M1 | Accepted |
 | [013](013_direct_duckdb_writes_m2.md) | Direct DuckDB writes in M2 | M2 | Accepted |
+| [014](014_proxy_factory_contracts.md) | Proxy Factory contracts for EOA mapping | M3 | Accepted |
 
 ## Template
 

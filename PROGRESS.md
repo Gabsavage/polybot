@@ -42,6 +42,53 @@
 
 ---
 
+## 2026-04-24 — M2 COMPLETE (indexers deployed + gate validated)
+
+### M2 Deliverables
+
+| Livrable | Status |
+|----------|--------|
+| Migration 002 (schema alignment: trades, markets_gamma) | Done |
+| Indexer trades (Data API, paginated, backfill + incremental) | Done |
+| Indexer markets_gamma (bulk upsert via pyarrow + staging table) | Done |
+| Seed Tier A script (15 wallets into DuckDB) | Done |
+| systemd units: polybot-trades.service, polybot-markets.service/timer | Done |
+| Unit tests: trades_dataapi, markets_gamma, seed_tier_a | Done |
+| ADR-012 (UTC timestamps R2 naming) + ADR-013 (direct DuckDB writes M2) | Done |
+| Specs: C2 informed trading (M6), C3 resolution risk (M5) | Done |
+| M2 backlog consolidation (docs/M2_backlog.md) | Done |
+| GitHub repo (Gabsavage/polybot, private) | Done |
+
+### Key metrics (gate)
+
+- **64K markets** indexed via Gamma API
+- **871 trades** indexed via Data API for 15 Tier A wallets
+- **15 Tier A wallets** seeded (11 A1 + 4 A2)
+- Indexers stable on VPS, 0 errors in journalctl
+- Bulk upsert perf: pyarrow + staging table (ADR-013)
+
+### Commits (8)
+
+| Hash | Description |
+|------|-------------|
+| `afc44d2` | ADR-012 UTC timestamps + timezone conventions |
+| `5affb11` | C2 informed trading spec (515 lines, M6) |
+| `a0b1ed5` | C3 resolution risk spec (M5) |
+| `40faf5e` | Consolidate M2 backlog |
+| `49a95f4` | Indexers, migration 002, seed script, systemd units |
+| `d997099` | Fix deploy: align systemd units with VPS layout |
+| `a17d392` | Perf: bulk upsert via pyarrow + staging table |
+| `324567d` | C4 macro market discovery (225 US markets) |
+
+### M2 Gate — VALIDATED
+
+- Date : 2026-04-24
+- Tag : `m2-complete`
+- Decision : **GO**
+- Next : M3
+
+---
+
 ## 2026-04-22 — M1 COMPLETE (deployed + gate validated)
 
 ### M1 Deliverables
