@@ -183,22 +183,31 @@ def fetch_resolution_events(
     url: str,
     from_block: int,
     to_block: int,
+    _min_batch: int = 10,
 ) -> list[dict]:
-    """Fetch ConditionResolution events from ConditionalTokens contract."""
-    result = rpc_call(
-        client,
-        url,
-        "eth_getLogs",
-        [
-            {
-                "fromBlock": hex(from_block),
-                "toBlock": hex(to_block),
-                "address": CONDITIONAL_TOKENS,
-                "topics": [CONDITION_RESOLUTION_TOPIC],
-            }
-        ],
-    )
-    return result.get("result", [])
+    """Fetch ConditionResolution events, with recursive splitting on range errors."""
+    try:
+        result = rpc_call(
+            client,
+            url,
+            "eth_getLogs",
+            [
+                {
+                    "fromBlock": hex(from_block),
+                    "toBlock": hex(to_block),
+                    "address": CONDITIONAL_TOKENS,
+                    "topics": [CONDITION_RESOLUTION_TOPIC],
+                }
+            ],
+        )
+        return result.get("result", [])
+    except LogResponseTooLarge:
+        if to_block - from_block < _min_batch:
+            return []
+        mid = from_block + (to_block - from_block) // 2
+        left = fetch_resolution_events(client, url, from_block, mid, _min_batch)
+        right = fetch_resolution_events(client, url, mid + 1, to_block, _min_batch)
+        return left + right
 
 
 def get_block_timestamp(
@@ -258,24 +267,9 @@ def run(db_path: str, alchemy_url: str) -> int:
                 batch_end = min(batch_start + BATCH_SIZE_BLOCKS - 1, head)
                 batch_num += 1
 
-                try:
-                    events = fetch_resolution_events(
-                        client, alchemy_url, batch_start, batch_end
-                    )
-                except LogResponseTooLarge:
-                    logger.warning(
-                        "log_too_large_halving",
-                        batch_start=batch_start,
-                        batch_end=batch_end,
-                    )
-                    mid = batch_start + (batch_end - batch_start) // 2
-                    events_a = fetch_resolution_events(
-                        client, alchemy_url, batch_start, mid
-                    )
-                    events_b = fetch_resolution_events(
-                        client, alchemy_url, mid + 1, batch_end
-                    )
-                    events = events_a + events_b
+                events = fetch_resolution_events(
+                    client, alchemy_url, batch_start, batch_end
+                )
 
                 if events:
                     resolutions = []

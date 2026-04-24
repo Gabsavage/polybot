@@ -28,7 +28,7 @@ FACTORIES = {
 }
 
 BATCH_SIZE_BLOCKS = 2000
-SLEEP_BETWEEN_BATCHES = 0.2
+SLEEP_BETWEEN_BATCHES = 0.1
 BACKFILL_START_BLOCK = 11_000_000
 REQUEST_TIMEOUT = 15.0
 MAX_RPC_RETRIES = 5
@@ -70,6 +70,18 @@ def rpc_call(
                 logger.warning("rpc_429", method=method, retry_in=delay)
                 time.sleep(delay)
                 continue
+            if resp.status_code == 400:
+                # Alchemy free tier returns 400 for block range too wide
+                try:
+                    data = resp.json()
+                    if "error" in data:
+                        err_msg = data["error"].get("message", "")
+                        if "block range" in err_msg.lower():
+                            raise LogResponseTooLarge(err_msg)
+                        raise RPCError(f"RPC 400: {err_msg}")
+                except (ValueError, KeyError):
+                    pass
+                raise RPCError(f"RPC 400 Bad Request for {method}")
             if resp.status_code >= 500:
                 logger.warning("rpc_5xx", status=resp.status_code)
                 time.sleep(2)
@@ -130,22 +142,40 @@ def fetch_proxy_creation_events(
     from_block: int,
     to_block: int,
     factory: str,
+    _min_batch: int = 10,
 ) -> list[dict]:
-    """eth_getLogs for ProxyCreation events in a block range."""
-    result = rpc_call(
-        client,
-        url,
-        "eth_getLogs",
-        [
-            {
-                "fromBlock": hex(from_block),
-                "toBlock": hex(to_block),
-                "address": factory,
-                "topics": [PROXY_CREATION_TOPIC],
-            }
-        ],
-    )
-    return result.get("result", [])
+    """eth_getLogs for ProxyCreation events, with recursive splitting on range errors."""
+    try:
+        result = rpc_call(
+            client,
+            url,
+            "eth_getLogs",
+            [
+                {
+                    "fromBlock": hex(from_block),
+                    "toBlock": hex(to_block),
+                    "address": factory,
+                    "topics": [PROXY_CREATION_TOPIC],
+                }
+            ],
+        )
+        return result.get("result", [])
+    except LogResponseTooLarge:
+        if to_block - from_block < _min_batch:
+            logger.warning(
+                "block_range_too_small_to_split",
+                from_block=from_block,
+                to_block=to_block,
+            )
+            return []
+        mid = from_block + (to_block - from_block) // 2
+        left = fetch_proxy_creation_events(
+            client, url, from_block, mid, factory, _min_batch
+        )
+        right = fetch_proxy_creation_events(
+            client, url, mid + 1, to_block, factory, _min_batch
+        )
+        return left + right
 
 
 def parse_proxy_from_event(event: dict) -> str:
@@ -304,25 +334,9 @@ def run(db_path: str, alchemy_url: str) -> int:
                 batch_num += 1
 
                 for factory in FACTORIES:
-                    try:
-                        events = fetch_proxy_creation_events(
-                            client, alchemy_url, batch_start, batch_end, factory
-                        )
-                    except LogResponseTooLarge:
-                        # Halve batch and retry
-                        logger.warning(
-                            "log_too_large_halving",
-                            batch_start=batch_start,
-                            batch_end=batch_end,
-                        )
-                        mid = batch_start + (batch_end - batch_start) // 2
-                        events_a = fetch_proxy_creation_events(
-                            client, alchemy_url, batch_start, mid, factory
-                        )
-                        events_b = fetch_proxy_creation_events(
-                            client, alchemy_url, mid + 1, batch_end, factory
-                        )
-                        events = events_a + events_b
+                    events = fetch_proxy_creation_events(
+                        client, alchemy_url, batch_start, batch_end, factory
+                    )
 
                     if events:
                         mappings = process_events(
