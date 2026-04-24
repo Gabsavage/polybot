@@ -1,0 +1,12 @@
+[Unit]
+Description=Polybot Proxy Factory indexer
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/polybot
+Environment=PYTHONPATH=/root/polybot/src
+ExecStart=/root/polybot/.venv/bin/python -m polybot.indexers.proxy_factory
+StandardOutput=journal
+StandardError=journal
