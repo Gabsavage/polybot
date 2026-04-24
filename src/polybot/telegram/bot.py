@@ -1,0 +1,206 @@
+"""Polybot Telegram bot — commands + alert emission."""
+
+import contextlib
+from datetime import UTC, datetime, timedelta
+
+import duckdb
+import structlog
+from telegram import Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+)
+
+from polybot.config import Settings
+
+logger = structlog.get_logger()
+
+
+class PolyBot:
+    """Telegram bot with commands and alert routing."""
+
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        self.db_path = str(settings.DUCKDB_PATH)
+        self.chat_id = settings.TELEGRAM_CHAT_ID
+        self.topics = {
+            "alerts": settings.TELEGRAM_TOPIC_ALERTS,
+            "ops": settings.TELEGRAM_TOPIC_OPS,
+            "errors": settings.TELEGRAM_TOPIC_ERRORS,
+            "risk": settings.TELEGRAM_TOPIC_RISK,
+        }
+        self.start_time = datetime.now(UTC)
+        self.app = (
+            Application.builder()
+            .token(settings.TELEGRAM_BOT_TOKEN)
+            .build()
+        )
+        self._register_handlers()
+
+    def _register_handlers(self) -> None:
+        self.app.add_handler(CommandHandler("status", self._cmd_status))
+        self.app.add_handler(CommandHandler("bankroll", self._cmd_bankroll))
+        self.app.add_handler(CommandHandler("help", self._cmd_help))
+        self.app.add_handler(CommandHandler("recent", self._cmd_recent))
+
+    async def send_alert(
+        self, topic: str, message: str
+    ) -> int | None:
+        """Send a message to a topic in the group. Returns message_id."""
+        thread_id = self.topics.get(topic)
+        if not thread_id:
+            logger.warning("unknown_topic", topic=topic)
+            return None
+        try:
+            msg = await self.app.bot.send_message(
+                chat_id=self.chat_id,
+                message_thread_id=thread_id,
+                text=message,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+            return msg.message_id
+        except Exception:
+            logger.exception("telegram_send_failed", topic=topic)
+            return None
+
+    # --- Commands ---
+
+    async def _cmd_status(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        con = duckdb.connect(self.db_path, read_only=True)
+        try:
+            # Trades 24h
+            trades_24h = con.execute(
+                "SELECT COUNT(*) FROM trades "
+                "WHERE timestamp_ts > NOW() - INTERVAL 24 HOUR"
+            ).fetchone()[0]
+
+            # Alerts 24h
+            alerts_24h = con.execute(
+                "SELECT COUNT(*) FROM alerts "
+                "WHERE emitted_at > NOW() - INTERVAL 24 HOUR"
+            ).fetchone()[0]
+
+            # Last trade
+            last_trade = con.execute(
+                "SELECT MAX(timestamp_ts) FROM trades"
+            ).fetchone()[0]
+
+            # Indexer states
+            indexers = con.execute(
+                "SELECT indexer_name, last_run_status, last_synced_at "
+                "FROM indexer_state ORDER BY indexer_name"
+            ).fetchall()
+        finally:
+            con.close()
+
+        uptime = datetime.now(UTC) - self.start_time
+        uptime_str = f"{uptime.days}d {uptime.seconds // 3600}h"
+
+        lines = [
+            "<b>📊 Polybot Status</b>",
+            f"⏱ Uptime: {uptime_str}",
+            f"📈 Trades 24h: {trades_24h}",
+            f"🎯 Alerts 24h: {alerts_24h}",
+            f"🕐 Last trade: {last_trade or 'N/A'}",
+            "",
+            "<b>Indexers:</b>",
+        ]
+        for name, status, synced in indexers:
+            icon = "✅" if status == "success" else "❌"
+            lines.append(f"  {icon} {name}: {status} ({synced})")
+
+        await update.message.reply_text(
+            "\n".join(lines), parse_mode="HTML"
+        )
+
+    async def _cmd_bankroll(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        args = context.args or []
+
+        if len(args) >= 2 and args[0].lower() == "set":
+            try:
+                amount = float(args[1])
+            except ValueError:
+                await update.message.reply_text("Usage: /bankroll set <montant>")
+                return
+
+            con = duckdb.connect(self.db_path)
+            con.execute(
+                "INSERT OR REPLACE INTO bankroll_state (id, amount, updated_at) "
+                "VALUES (1, ?, CURRENT_TIMESTAMP)",
+                [amount],
+            )
+            con.close()
+            await update.message.reply_text(f"Bankroll mis à jour : ${amount:,.2f}")
+            return
+
+        # Display current bankroll
+        con = duckdb.connect(self.db_path, read_only=True)
+        row = con.execute(
+            "SELECT amount, updated_at FROM bankroll_state WHERE id = 1"
+        ).fetchone()
+        con.close()
+
+        if not row:
+            await update.message.reply_text(
+                "Bankroll non configuré. Usage: /bankroll set <montant>"
+            )
+            return
+
+        amount, updated_at = row
+        age = datetime.now(UTC) - updated_at.replace(tzinfo=UTC)
+        warning = ""
+        if age > timedelta(days=14):
+            warning = f"\n⚠️ Dernière MAJ il y a {age.days} jours"
+
+        await update.message.reply_text(
+            f"💰 Bankroll : ${float(amount):,.2f}\n"
+            f"📅 MAJ : {updated_at}{warning}"
+        )
+
+    async def _cmd_help(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        await update.message.reply_text(
+            "<b>Polybot Commands</b>\n\n"
+            "/status — Santé du système\n"
+            "/bankroll — Afficher le bankroll\n"
+            "/bankroll set &lt;montant&gt; — Mettre à jour le bankroll\n"
+            "/recent [N] — N dernières alertes (défaut 5)\n"
+            "/help — Cette aide",
+            parse_mode="HTML",
+        )
+
+    async def _cmd_recent(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        args = context.args or []
+        n = 5
+        if args:
+            with contextlib.suppress(ValueError):
+                n = min(int(args[0]), 20)
+
+        con = duckdb.connect(self.db_path, read_only=True)
+        rows = con.execute(
+            "SELECT alert_id, wallet_address, condition_id, side, "
+            "size_usd, emitted_at FROM alerts "
+            "ORDER BY emitted_at DESC LIMIT ?",
+            [n],
+        ).fetchall()
+        con.close()
+
+        if not rows:
+            await update.message.reply_text("Aucune alerte récente.")
+            return
+
+        lines = [f"<b>📋 {len(rows)} dernières alertes</b>"]
+        for alert_id, wallet, _cond, side, size, ts in rows:
+            w = wallet[:10] if wallet else "?"
+            lines.append(f"  {alert_id} | {w}… | {side} ${float(size):,.0f} | {ts}")
+
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")

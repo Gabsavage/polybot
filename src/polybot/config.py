@@ -34,6 +34,28 @@ class Settings(BaseSettings):
     SNAPSHOT_MIN_VOLUME_24H: float = 50_000.0
     SNAPSHOT_UNIVERSE_REFRESH_HOURS: int = 6
 
+    # Telegram
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_CHAT_ID: int = 0
+    TELEGRAM_TOPIC_ALERTS: int = 0
+    TELEGRAM_TOPIC_OPS: int = 0
+    TELEGRAM_TOPIC_ERRORS: int = 0
+    TELEGRAM_TOPIC_RISK: int = 0
+
+    # C1 Sharp Money
+    C1_SIZE_MIN_USD: float = 1000.0
+    C1_RATE_LIMIT_HOURS: int = 3
+    C1_DEDUP_BUCKET_SECONDS: int = 300
+    C1_LIQUIDITY_MIN_DEPTH: float = 500.0
+    C1_KELLY_FRACTION: float = 0.25
+    C1_EDGE_DEFAULT_A1: float = 0.04
+    C1_EDGE_DEFAULT_A2: float = 0.02
+    C1_CONFIDENCE_MULTIPLIER_A1: float = 1.0
+    C1_CONFIDENCE_MULTIPLIER_A2: float = 0.6
+    C1_SIZE_MAX_PCT_BANKROLL: float = 0.05
+    C1_SIZE_MIN_ALERT: float = 10.0
+    C1_POLL_INTERVAL: int = 60
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_DIR: Path = Path("logs")

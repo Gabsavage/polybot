@@ -1,4 +1,4 @@
-"""Tests for indexer_proxy_factory."""
+"""Tests for indexer_proxy_factory (targeted EOA resolution)."""
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -9,19 +9,12 @@ import pytest
 
 from polybot.db.migrations import apply_migrations
 from polybot.indexers.proxy_factory import (
-    GNOSIS_SAFE_FACTORY,
-    POLYMARKET_FACTORY,
-    PROXY_CREATION_TOPIC,
-    LogResponseTooLarge,
-    RPCError,
-    get_last_scanned_block,
-    get_tx_sender,
-    insert_mappings,
-    parse_proxy_from_event,
-    process_events,
+    get_unresolved_wallets,
+    resolve_eoa,
     rpc_call,
     run,
     update_indexer_state,
+    upsert_mapping,
 )
 
 
@@ -33,162 +26,145 @@ def db_path(tmp_path: Path) -> str:
     return str(path)
 
 
-def _make_event(
-    proxy_hex: str = "ed9bec5dd51856fd4e6d351701db77967ac8534e",
-    singleton_hex: str = "3e5c63644e683549055b9be8653de26e0b4cd36e",
-    block_number: int = 50_000_000,
-    tx_hash: str = "0xabc123",
-) -> dict:
-    """Build a mock ProxyCreation event log."""
-    data = (
-        "0x"
-        + proxy_hex.rjust(64, "0")
-        + singleton_hex.rjust(64, "0")
+def _seed_wallet(db_path: str, address: str = "0xwallet1"):
+    con = duckdb.connect(db_path)
+    con.execute(
+        "INSERT OR REPLACE INTO tracked_wallets "
+        "(address, tier, active, last_seen_timestamp) "
+        "VALUES (?, 'A', TRUE, 0)",
+        [address],
     )
-    return {
-        "topics": [PROXY_CREATION_TOPIC],
-        "data": data,
-        "blockNumber": hex(block_number),
-        "transactionHash": tx_hash,
-        "logIndex": "0x1",
-    }
+    con.close()
 
 
-class TestEventParsing:
-    def test_parse_proxy_from_event(self):
-        event = _make_event(proxy_hex="ed9bec5dd51856fd4e6d351701db77967ac8534e")
-        proxy = parse_proxy_from_event(event)
-        assert proxy == "0xed9bec5dd51856fd4e6d351701db77967ac8534e"
-
-    def test_parse_proxy_short_data_raises(self):
-        event = {"data": "0x1234"}
-        with pytest.raises(ValueError, match="too short"):
-            parse_proxy_from_event(event)
-
-    def test_parse_proxy_different_address(self):
-        event = _make_event(proxy_hex="1111111111111111111111111111111111111111")
-        proxy = parse_proxy_from_event(event)
-        assert proxy == "0x1111111111111111111111111111111111111111"
+def _mock_rpc_response(data):
+    return httpx.Response(
+        200, json=data, request=httpx.Request("POST", "http://test")
+    )
 
 
-class TestEOAExtraction:
-    def test_get_tx_sender(self):
+class TestResolveEOA:
+    def test_self_eoa_no_code(self):
+        """Wallet with no contract code → self-mapping."""
         client = MagicMock()
-        client.post.return_value = httpx.Response(
-            200,
-            json={
+        client.post.return_value = _mock_rpc_response(
+            {"jsonrpc": "2.0", "result": "0x", "id": 1}
+        )
+        eoa, method, conf = resolve_eoa(client, "http://test", "0xABC123")
+        assert eoa == "0xabc123"
+        assert method == "manual"
+        assert conf == 1.0
+
+    def test_gnosis_safe_get_owners(self):
+        """Contract with getOwners() → owner is EOA."""
+        # First call: eth_getCode returns contract code
+        code_resp = _mock_rpc_response(
+            {"jsonrpc": "2.0", "result": "0x1234abcd", "id": 1}
+        )
+        # Second call: eth_call getOwners() returns 1 owner
+        owner_addr = "deadbeef" * 5  # 20 bytes
+        owners_data = (
+            "0x"
+            + "0" * 64  # offset to array
+            + "0" * 63 + "1"  # array length = 1
+            + "0" * 24 + owner_addr  # padded address
+        )
+        # Fix: offset should be 0x20 = 32
+        owners_data = (
+            "0x"
+            + f"{32:064x}"  # offset
+            + f"{1:064x}"  # length
+            + "0" * 24 + owner_addr
+        )
+        owners_resp = _mock_rpc_response(
+            {"jsonrpc": "2.0", "result": owners_data, "id": 1}
+        )
+
+        client = MagicMock()
+        client.post.side_effect = [code_resp, owners_resp]
+
+        eoa, method, conf = resolve_eoa(client, "http://test", "0xproxy")
+        assert eoa == "0x" + owner_addr
+        assert method == "direct_factory"
+        assert conf == 1.0
+
+    def test_first_tx_fallback(self):
+        """Contract without getOwners → fallback to first incoming tx."""
+        code_resp = _mock_rpc_response(
+            {"jsonrpc": "2.0", "result": "0x1234", "id": 1}
+        )
+        # getOwners fails (short result)
+        owners_resp = _mock_rpc_response(
+            {"jsonrpc": "2.0", "result": "0x", "id": 1}
+        )
+        # alchemy_getAssetTransfers returns first tx
+        transfers_resp = _mock_rpc_response(
+            {
                 "jsonrpc": "2.0",
                 "result": {
-                    "from": "0xaaaa",
-                    "to": GNOSIS_SAFE_FACTORY,
-                    "hash": "0xabc",
+                    "transfers": [{"from": "0xSENDER", "blockNum": "0x100"}]
                 },
                 "id": 1,
-            },
-            request=httpx.Request("POST", "http://test"),
+            }
         )
-        sender = get_tx_sender(client, "http://test", "0xabc")
-        assert sender == "0xaaaa"
 
-    def test_get_tx_sender_missing_tx_raises(self):
         client = MagicMock()
-        client.post.return_value = httpx.Response(
-            200,
-            json={"jsonrpc": "2.0", "result": None, "id": 1},
-            request=httpx.Request("POST", "http://test"),
-        )
-        with pytest.raises(RPCError, match="No tx found"):
-            get_tx_sender(client, "http://test", "0xmissing")
+        client.post.side_effect = [code_resp, owners_resp, transfers_resp]
+
+        eoa, method, conf = resolve_eoa(client, "http://test", "0xproxy2")
+        assert eoa == "0xsender"
+        assert method == "first_tx"
+        assert conf == 0.8
 
 
-class TestInsertIdempotent:
-    def test_duplicate_proxy_not_inserted_twice(self, db_path: str):
-        mapping = {
-            "proxy_address": "0xproxy1",
-            "eoa_address": "0xeoa1",
-            "confidence": 0.8,
-            "first_seen_block": 50_000_000,
-            "first_seen_ts": None,
-            "factory_contract": GNOSIS_SAFE_FACTORY,
-        }
-        count1 = insert_mappings(db_path, [mapping])
-        count2 = insert_mappings(db_path, [mapping])
-        assert count1 == 1
-        assert count2 == 0
-
+class TestUpsertMapping:
+    def test_insert_new(self, db_path):
+        upsert_mapping(db_path, "0xproxy", "0xeoa", 1.0, "direct_factory")
         con = duckdb.connect(db_path, read_only=True)
-        total = con.execute("SELECT COUNT(*) FROM proxy_eoa_map").fetchone()[0]
+        row = con.execute(
+            "SELECT eoa_address, confidence FROM proxy_eoa_map "
+            "WHERE proxy_address = '0xproxy'"
+        ).fetchone()
         con.close()
-        assert total == 1
+        assert row[0] == "0xeoa"
+        assert float(row[1]) == 1.0
 
-    def test_different_proxies_both_inserted(self, db_path: str):
-        m1 = {
-            "proxy_address": "0xproxy_a",
-            "eoa_address": "0xeoa1",
-            "confidence": 0.8,
-            "first_seen_block": 50_000_000,
-            "first_seen_ts": None,
-            "factory_contract": GNOSIS_SAFE_FACTORY,
-        }
-        m2 = {
-            "proxy_address": "0xproxy_b",
-            "eoa_address": "0xeoa2",
-            "confidence": 1.0,
-            "first_seen_block": 50_000_100,
-            "first_seen_ts": None,
-            "factory_contract": POLYMARKET_FACTORY,
-        }
-        count = insert_mappings(db_path, [m1, m2])
-        assert count == 2
+    def test_upsert_updates(self, db_path):
+        upsert_mapping(db_path, "0xproxy", "0xeoa1", 0.8, "first_tx")
+        upsert_mapping(db_path, "0xproxy", "0xeoa2", 1.0, "direct_factory")
+        con = duckdb.connect(db_path, read_only=True)
+        row = con.execute(
+            "SELECT eoa_address, confidence FROM proxy_eoa_map "
+            "WHERE proxy_address = '0xproxy'"
+        ).fetchone()
+        con.close()
+        assert row[0] == "0xeoa2"
+        assert float(row[1]) == 1.0
 
 
-class TestConfidenceScoring:
-    def test_gnosis_confidence_08(self):
-        client = MagicMock()
-        # Mock get_tx_sender via rpc_call
-        client.post.return_value = httpx.Response(
-            200,
-            json={
-                "jsonrpc": "2.0",
-                "result": {"from": "0xeoa_gnosis", "to": GNOSIS_SAFE_FACTORY, "hash": "0x1"},
-                "id": 1,
-            },
-            request=httpx.Request("POST", "http://test"),
-        )
-        events = [_make_event(tx_hash="0x1")]
-        mappings = process_events(client, "http://test", events, GNOSIS_SAFE_FACTORY)
-        assert len(mappings) == 1
-        assert mappings[0]["confidence"] == 0.8
+class TestGetUnresolved:
+    def test_finds_unresolved(self, db_path):
+        _seed_wallet(db_path, "0xw1")
+        _seed_wallet(db_path, "0xw2")
+        upsert_mapping(db_path, "0xw1", "0xeoa1", 1.0, "manual")
+        # 0xw2 has no mapping
+        unresolved = get_unresolved_wallets(db_path)
+        assert unresolved == ["0xw2"]
 
-    def test_polymarket_confidence_10(self):
-        client = MagicMock()
-        client.post.return_value = httpx.Response(
-            200,
-            json={
-                "jsonrpc": "2.0",
-                "result": {"from": "0xeoa_poly", "to": POLYMARKET_FACTORY, "hash": "0x2"},
-                "id": 1,
-            },
-            request=httpx.Request("POST", "http://test"),
-        )
-        events = [_make_event(tx_hash="0x2")]
-        mappings = process_events(client, "http://test", events, POLYMARKET_FACTORY)
-        assert len(mappings) == 1
-        assert mappings[0]["confidence"] == 1.0
+    def test_all_resolved(self, db_path):
+        _seed_wallet(db_path, "0xw1")
+        upsert_mapping(db_path, "0xw1", "0xeoa1", 1.0, "manual")
+        assert get_unresolved_wallets(db_path) == []
+
+    def test_empty(self, db_path):
+        assert get_unresolved_wallets(db_path) == []
 
 
 class TestBackoff429:
-    def test_retries_on_429_then_succeeds(self):
+    def test_retries_on_429(self):
         responses = [
-            httpx.Response(
-                429,
-                request=httpx.Request("POST", "http://test"),
-            ),
-            httpx.Response(
-                200,
-                json={"jsonrpc": "2.0", "result": "0x1000", "id": 1},
-                request=httpx.Request("POST", "http://test"),
-            ),
+            httpx.Response(429, request=httpx.Request("POST", "http://test")),
+            _mock_rpc_response({"jsonrpc": "2.0", "result": "0x1000", "id": 1}),
         ]
         client = MagicMock()
         client.post.side_effect = responses
@@ -196,118 +172,84 @@ class TestBackoff429:
         with patch("polybot.indexers.proxy_factory.time.sleep"):
             result = rpc_call(client, "http://test", "eth_blockNumber")
         assert result["result"] == "0x1000"
-        assert client.post.call_count == 2
-
-
-class TestLogResponseTooLarge:
-    def test_raises_on_log_size_exceeded(self):
-        client = MagicMock()
-        client.post.return_value = httpx.Response(
-            200,
-            json={
-                "jsonrpc": "2.0",
-                "error": {"code": -32000, "message": "Log response size exceeded"},
-                "id": 1,
-            },
-            request=httpx.Request("POST", "http://test"),
-        )
-        with pytest.raises(LogResponseTooLarge):
-            rpc_call(client, "http://test", "eth_getLogs", [{}])
-
-
-class TestIncrementalMode:
-    def test_resumes_from_last_cursor(self, db_path: str):
-        # Seed indexer_state with a last_cursor
-        con = duckdb.connect(db_path)
-        con.execute(
-            """
-            INSERT INTO indexer_state
-                (indexer_name, last_synced_at, last_cursor, last_run_status,
-                 last_run_duration_ms, ingested_count)
-            VALUES ('proxy_factory', NOW(), '50000000', 'success', 100, 0)
-            """
-        )
-        con.close()
-
-        last = get_last_scanned_block(db_path)
-        assert last == 50_000_000
-
-    def test_returns_none_when_no_state(self, db_path: str):
-        last = get_last_scanned_block(db_path)
-        assert last is None
 
 
 class TestUpdateIndexerState:
-    def test_writes_state(self, db_path: str):
-        update_indexer_state(db_path, 60_000_000, "success", 42, 1500)
-
+    def test_writes_state(self, db_path):
+        update_indexer_state(db_path, "success", 15, 500)
         con = duckdb.connect(db_path, read_only=True)
         row = con.execute(
-            "SELECT last_cursor, last_run_status, ingested_count "
+            "SELECT last_run_status, ingested_count "
             "FROM indexer_state WHERE indexer_name = 'proxy_factory'"
         ).fetchone()
         con.close()
-
-        assert row[0] == "60000000"
-        assert row[1] == "success"
-        assert row[2] == 42
+        assert row[0] == "success"
+        assert row[1] == 15
 
 
 class TestRunIntegration:
-    def test_run_with_mocked_rpc(self, db_path: str):
-        """End-to-end run with mocked RPC — simulates 1 batch with 1 event."""
-        block_resp = {"jsonrpc": "2.0", "result": hex(11_002_000), "id": 1}
-        event = _make_event(
-            proxy_hex="aaaa000000000000000000000000000000000001",
-            block_number=11_000_500,
-            tx_hash="0xtx1",
-        )
-        logs_resp_with_events = {"jsonrpc": "2.0", "result": [event], "id": 1}
-        logs_resp_empty = {"jsonrpc": "2.0", "result": [], "id": 1}
-        tx_resp = {
-            "jsonrpc": "2.0",
-            "result": {"from": "0xeoa_test", "to": GNOSIS_SAFE_FACTORY, "hash": "0xtx1"},
-            "id": 1,
-        }
+    def test_resolves_unresolved_wallets(self, db_path):
+        """End-to-end: 2 wallets, 1 self-EOA + 1 Gnosis Safe."""
+        _seed_wallet(db_path, "0xbare_eoa")
+        _seed_wallet(db_path, "0xsafe_proxy")
 
-        responses_map: dict[str, list] = {
-            "eth_blockNumber": [block_resp],
-            "eth_getLogs": [logs_resp_with_events, logs_resp_empty],
-            "eth_getTransactionByHash": [tx_resp],
-        }
+        call_idx = {"n": 0}
 
         def mock_post(url, **kwargs):
             body = kwargs.get("json", {})
             method = body.get("method", "")
-            resps = responses_map.get(method, [])
-            resp_data = resps.pop(0) if resps else {"jsonrpc": "2.0", "result": [], "id": 1}
-            return httpx.Response(
-                200, json=resp_data, request=httpx.Request("POST", url)
+            call_idx["n"] += 1
+
+            if method == "eth_getCode":
+                address = body["params"][0]
+                if "bare" in address:
+                    return _mock_rpc_response(
+                        {"jsonrpc": "2.0", "result": "0x", "id": 1}
+                    )
+                # safe_proxy has code
+                return _mock_rpc_response(
+                    {"jsonrpc": "2.0", "result": "0xabcdef", "id": 1}
+                )
+
+            if method == "eth_call":
+                # getOwners returns 1 owner
+                owner = "1234567890" * 4
+                data = "0x" + f"{32:064x}" + f"{1:064x}" + "0" * 24 + owner
+                return _mock_rpc_response(
+                    {"jsonrpc": "2.0", "result": data, "id": 1}
+                )
+
+            return _mock_rpc_response(
+                {"jsonrpc": "2.0", "result": "0x", "id": 1}
             )
 
         with (
-            patch("polybot.indexers.proxy_factory.httpx.Client") as mock_client_cls,
+            patch("polybot.indexers.proxy_factory.httpx.Client") as mock_cls,
             patch("polybot.indexers.proxy_factory.time.sleep"),
         ):
             mock_client = MagicMock()
             mock_client.post.side_effect = mock_post
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client_cls.return_value = mock_client
+            mock_cls.return_value = mock_client
 
-            count = run(db_path, "http://test-alchemy")
+            count = run(db_path, "http://test")
 
-        assert count == 1
+        assert count == 2
 
         con = duckdb.connect(db_path, read_only=True)
-        row = con.execute(
-            "SELECT proxy_address, eoa_address, confidence, method "
-            "FROM proxy_eoa_map"
-        ).fetchone()
+        rows = con.execute(
+            "SELECT proxy_address, method FROM proxy_eoa_map "
+            "ORDER BY proxy_address"
+        ).fetchall()
         con.close()
+        assert len(rows) == 2
+        methods = {r[0]: r[1] for r in rows}
+        assert methods["0xbare_eoa"] == "manual"
+        assert methods["0xsafe_proxy"] == "direct_factory"
 
-        assert row[0].startswith("0x")
-        assert len(row[0]) == 42
-        assert row[1] == "0xeoa_test"
-        assert float(row[2]) == 0.8
-        assert row[3] == "direct_factory"
+    def test_no_unresolved_is_noop(self, db_path):
+        """No unresolved wallets → 0 resolved, state updated."""
+        with patch("polybot.indexers.proxy_factory.httpx.Client"):
+            count = run(db_path, "http://test")
+        assert count == 0
