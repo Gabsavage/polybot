@@ -34,10 +34,11 @@ CONDITION_RESOLUTION_TOPIC = (
     "0xb44d84d3289691f71497564b85d4233648d9dbae8cbdbb4329f301c3a0185894"
 )
 
-BATCH_SIZE_BLOCKS = 5000
-SLEEP_BETWEEN_BATCHES = 0.2
-BACKFILL_START_BLOCK = 11_000_000
-LOG_EVERY_N_BATCHES = 50
+BATCH_SIZE_BLOCKS = 10  # Alchemy free tier limit
+SLEEP_BETWEEN_BATCHES = 0.05
+BACKFILL_START_BLOCK = 0  # 0 = dynamic (head - DEFAULT_LOOKBACK)
+DEFAULT_LOOKBACK = 5_000_000  # ~4 months, resolutions are sparser
+LOG_EVERY_N_BATCHES = 50_000
 
 UPSERT_SQL = """
 INSERT INTO resolutions (
@@ -227,17 +228,25 @@ def get_block_timestamp(
 def run(db_path: str, alchemy_url: str) -> int:
     """Main entry. Backfill or incremental scan for ConditionResolution events."""
     last_block = get_last_scanned_block(db_path)
-    start_block = (last_block + 1) if last_block else BACKFILL_START_BLOCK
     is_backfill = last_block is None
 
     start_time = time.monotonic()
     total_inserted = 0
-    current_block_end = start_block
 
     with httpx.Client(timeout=15.0) as client:
         from polybot.indexers.proxy_factory import get_current_block
 
         head = get_current_block(client, alchemy_url)
+
+        if is_backfill:
+            start_block = (
+                BACKFILL_START_BLOCK if BACKFILL_START_BLOCK > 0
+                else max(1, head - DEFAULT_LOOKBACK)
+            )
+        else:
+            start_block = last_block + 1
+
+        current_block_end = start_block
         total_batches = max(
             1, (head - start_block + BATCH_SIZE_BLOCKS) // BATCH_SIZE_BLOCKS
         )

@@ -27,12 +27,13 @@ FACTORIES = {
     POLYMARKET_FACTORY: {"name": "polymarket", "confidence": 1.0},
 }
 
-BATCH_SIZE_BLOCKS = 2000
-SLEEP_BETWEEN_BATCHES = 0.1
-BACKFILL_START_BLOCK = 11_000_000
+BATCH_SIZE_BLOCKS = 10  # Alchemy free tier limit for eth_getLogs
+SLEEP_BETWEEN_BATCHES = 0.05
+BACKFILL_START_BLOCK = 0  # 0 = use dynamic default (head - DEFAULT_LOOKBACK)
+DEFAULT_LOOKBACK = 500_000  # ~3 days of Polygon blocks for initial backfill
 REQUEST_TIMEOUT = 15.0
 MAX_RPC_RETRIES = 5
-LOG_EVERY_N_BATCHES = 100
+LOG_EVERY_N_BATCHES = 5_000
 
 INSERT_SQL = """
 INSERT INTO proxy_eoa_map
@@ -295,15 +296,23 @@ def update_indexer_state(
 def run(db_path: str, alchemy_url: str) -> int:
     """Main entry. Detects backfill vs incremental, scans factories."""
     last_block = get_last_scanned_block(db_path)
-    start_block = (last_block + 1) if last_block else BACKFILL_START_BLOCK
     is_backfill = last_block is None
 
     start_time = time.monotonic()
     total_inserted = 0
-    current_block_end = start_block  # track for state update on error
 
     with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
         head = get_current_block(client, alchemy_url)
+
+        if is_backfill:
+            start_block = (
+                BACKFILL_START_BLOCK if BACKFILL_START_BLOCK > 0
+                else max(1, head - DEFAULT_LOOKBACK)
+            )
+        else:
+            start_block = last_block + 1
+
+        current_block_end = start_block
         total_batches = max(
             1, (head - start_block + BATCH_SIZE_BLOCKS) // BATCH_SIZE_BLOCKS
         )
