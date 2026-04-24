@@ -35,10 +35,10 @@ CONDITION_RESOLUTION_TOPIC = (
 )
 
 BATCH_SIZE_BLOCKS = 10  # Alchemy free tier limit
-SLEEP_BETWEEN_BATCHES = 0.05
+SLEEP_BETWEEN_BATCHES = 0.3  # ~3 req/s to stay under rate limit
 BACKFILL_START_BLOCK = 0  # 0 = dynamic (head - DEFAULT_LOOKBACK)
-DEFAULT_LOOKBACK = 5_000_000  # ~4 months, resolutions are sparser
-LOG_EVERY_N_BATCHES = 50_000
+DEFAULT_LOOKBACK = 50_000  # ~28h of Polygon blocks
+LOG_EVERY_N_BATCHES = 2_500
 
 UPSERT_SQL = """
 INSERT INTO resolutions (

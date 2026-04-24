@@ -28,12 +28,12 @@ FACTORIES = {
 }
 
 BATCH_SIZE_BLOCKS = 10  # Alchemy free tier limit for eth_getLogs
-SLEEP_BETWEEN_BATCHES = 0.05
+SLEEP_BETWEEN_BATCHES = 0.3  # ~3 req/s to stay under Alchemy free tier rate limit
 BACKFILL_START_BLOCK = 0  # 0 = use dynamic default (head - DEFAULT_LOOKBACK)
-DEFAULT_LOOKBACK = 500_000  # ~3 days of Polygon blocks for initial backfill
+DEFAULT_LOOKBACK = 10_000  # ~5.5h of Polygon blocks for initial partial backfill
 REQUEST_TIMEOUT = 15.0
 MAX_RPC_RETRIES = 5
-LOG_EVERY_N_BATCHES = 5_000
+LOG_EVERY_N_BATCHES = 500
 
 INSERT_SQL = """
 INSERT INTO proxy_eoa_map
