@@ -27,13 +27,12 @@ FACTORIES = {
     POLYMARKET_FACTORY: {"name": "polymarket", "confidence": 1.0},
 }
 
-BATCH_SIZE_BLOCKS = 10  # Alchemy free tier limit for eth_getLogs
-SLEEP_BETWEEN_BATCHES = 0.3  # ~3 req/s to stay under Alchemy free tier rate limit
-BACKFILL_START_BLOCK = 0  # 0 = use dynamic default (head - DEFAULT_LOOKBACK)
-DEFAULT_LOOKBACK = 10_000  # ~5.5h of Polygon blocks for initial partial backfill
+BATCH_SIZE_BLOCKS = 2000  # PAYG tier supports wide ranges
+SLEEP_BETWEEN_BATCHES = 0.1
+BACKFILL_START_BLOCK = 11_000_000
 REQUEST_TIMEOUT = 15.0
 MAX_RPC_RETRIES = 5
-LOG_EVERY_N_BATCHES = 500
+LOG_EVERY_N_BATCHES = 100
 
 INSERT_SQL = """
 INSERT INTO proxy_eoa_map
@@ -304,13 +303,7 @@ def run(db_path: str, alchemy_url: str) -> int:
     with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
         head = get_current_block(client, alchemy_url)
 
-        if is_backfill:
-            start_block = (
-                BACKFILL_START_BLOCK if BACKFILL_START_BLOCK > 0
-                else max(1, head - DEFAULT_LOOKBACK)
-            )
-        else:
-            start_block = last_block + 1
+        start_block = BACKFILL_START_BLOCK if is_backfill else last_block + 1
 
         current_block_end = start_block
         total_batches = max(
