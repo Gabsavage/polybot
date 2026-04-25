@@ -1,5 +1,5 @@
 [Unit]
-Description=Polybot Telegram Bot + C1 Sharp Money daemon
+Description=Polybot unified daemon (bot + indexers + C1 + C2)
 After=network.target
 
 [Service]
@@ -7,6 +7,8 @@ Type=simple
 User=root
 WorkingDirectory=/root/polybot
 Environment=PYTHONPATH=/root/polybot/src
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/root/polybot/.env
 ExecStart=/root/polybot/.venv/bin/python -m polybot.daemon
 Restart=always
 RestartSec=10

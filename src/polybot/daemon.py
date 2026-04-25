@@ -1,7 +1,10 @@
-"""Polybot M6 daemon — Telegram bot + C1 Sharp Money + C2 Informed Trading + daily report."""
+"""Polybot unified daemon — bot + C1 + C2 + all indexers in one process."""
 
 import asyncio
+import time as time_mod
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, time, timedelta, timezone
+from functools import partial
 
 import structlog
 from telegram import BotCommand
@@ -10,6 +13,11 @@ from polybot.components.c1_sharp_money import SharpMoneyDetector
 from polybot.components.c2_informed_trading import InformedTradingDetector
 from polybot.components.report import generate_report
 from polybot.config import Settings
+from polybot.indexers.markets_gamma import run as run_markets
+from polybot.indexers.onchain_alchemy import run as run_onchain
+from polybot.indexers.proxy_factory import run as run_proxy
+from polybot.indexers.resolutions_uma import run as run_resolutions
+from polybot.indexers.trades_dataapi import run_forever as run_trades
 from polybot.jobs.log_alert_outcomes import log_alert_outcomes
 from polybot.logging import setup_logging
 from polybot.telegram.bot import PolyBot
@@ -42,6 +50,36 @@ async def schedule_daily_report(bot: PolyBot, db_path: str) -> None:
             logger.exception("daily_report_failed")
 
 
+async def run_scheduled_indexer(
+    name: str,
+    fn,
+    interval: int,
+    executor: ThreadPoolExecutor,
+    initial_delay: int = 0,
+    **kwargs,
+) -> None:
+    """Run a sync indexer function periodically via the shared executor."""
+    loop = asyncio.get_event_loop()
+    logger.info("indexer_scheduled", indexer=name, interval=interval, initial_delay=initial_delay)
+
+    if initial_delay:
+        await asyncio.sleep(initial_delay)
+
+    while True:
+        start = time_mod.monotonic()
+        try:
+            bound = partial(fn, **kwargs)
+            count = await loop.run_in_executor(executor, bound)
+            elapsed_ms = int((time_mod.monotonic() - start) * 1000)
+            logger.info("indexer_completed", indexer=name, count=count, duration_ms=elapsed_ms)
+        except Exception:
+            elapsed_ms = int((time_mod.monotonic() - start) * 1000)
+            logger.exception("indexer_failed", indexer=name, duration_ms=elapsed_ms)
+
+        elapsed = time_mod.monotonic() - start
+        await asyncio.sleep(max(0, interval - elapsed))
+
+
 async def main() -> None:
     settings = Settings()
     setup_logging(settings.LOG_LEVEL, settings.LOG_DIR)
@@ -52,6 +90,9 @@ async def main() -> None:
     c1 = SharpMoneyDetector(bot=bot, settings=settings)
     c2 = InformedTradingDetector(settings=settings, bot=bot)
     db_path = str(settings.DUCKDB_PATH)
+    alchemy_url = settings.ALCHEMY_POLYGON_URL
+
+    db_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="db-writer")
 
     async with bot.app:
         await bot.app.start()
@@ -72,8 +113,35 @@ async def main() -> None:
                 c1.run_forever(),
                 c2.run_forever(),
                 schedule_daily_report(bot, db_path),
+                run_trades(db_path),
+                run_scheduled_indexer(
+                    "markets_gamma", run_markets, 900,
+                    db_executor, initial_delay=0,
+                    db_path=db_path,
+                ),
+                run_scheduled_indexer(
+                    "proxy_factory", run_proxy, 3600,
+                    db_executor, initial_delay=0,
+                    db_path=db_path, alchemy_url=alchemy_url,
+                ),
+                run_scheduled_indexer(
+                    "resolutions_uma", run_resolutions, 3600,
+                    db_executor, initial_delay=300,
+                    db_path=db_path, alchemy_url=alchemy_url,
+                ),
+                run_scheduled_indexer(
+                    "onchain_alchemy", run_onchain, 3600,
+                    db_executor, initial_delay=600,
+                    db_path=db_path, alchemy_url=alchemy_url,
+                ),
+                run_scheduled_indexer(
+                    "alert_outcomes", log_alert_outcomes, 3600,
+                    db_executor, initial_delay=900,
+                    db_path=db_path,
+                ),
             )
         finally:
+            db_executor.shutdown(wait=False)
             await bot.app.updater.stop()
             await bot.app.stop()
 
