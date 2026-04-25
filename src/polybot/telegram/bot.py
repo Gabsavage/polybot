@@ -276,13 +276,17 @@ class PolyBot:
             f"⚖️ <b>Resolution Risk</b> — {risk_icon} <b>{cat}</b> ({sc:.2f})",
             "",
             f"<b>{title or slug}</b>",
+            "",
         ]
 
         for r in result.get("reasons", [])[:3]:
             lines.append(f"✅ {r}")
 
-        for flag in result.get("red_flags", []):
-            lines.append(f"⚠️ {flag}")
+        red_flags = result.get("red_flags", [])
+        if red_flags:
+            lines.append("")
+            for flag in red_flags:
+                lines.append(f"⚠️ {flag}")
 
         if result.get("llm_unavailable"):
             lines.append("\n<i>⚠️ Score basé sur les règles uniquement</i>")
