@@ -10,6 +10,7 @@ from polybot.components.c1_sharp_money import SharpMoneyDetector
 from polybot.components.c2_informed_trading import InformedTradingDetector
 from polybot.components.report import generate_report
 from polybot.config import Settings
+from polybot.jobs.log_alert_outcomes import log_alert_outcomes
 from polybot.logging import setup_logging
 from polybot.telegram.bot import PolyBot
 
@@ -31,6 +32,9 @@ async def schedule_daily_report(bot: PolyBot, db_path: str) -> None:
         await asyncio.sleep(wait_seconds)
 
         try:
+            resolved = log_alert_outcomes(db_path)
+            if resolved:
+                logger.info("alert_outcomes_enriched", count=resolved)
             report = generate_report(db_path, days=1, bot_start=bot.start_time)
             await bot.send_alert("ops", report)
             logger.info("daily_report_sent")
@@ -58,6 +62,7 @@ async def main() -> None:
             BotCommand("report", "Rapport performance quotidien"),
             BotCommand("risk", "Analyse resolution risk d'un marché"),
             BotCommand("recent", "Dernières alertes C1"),
+            BotCommand("toggle", "Toggle shadow mode on/off"),
             BotCommand("help", "Liste des commandes"),
         ])
         logger.info("telegram_bot_started")

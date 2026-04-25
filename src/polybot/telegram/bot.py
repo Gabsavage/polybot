@@ -46,6 +46,7 @@ class PolyBot:
         self.app.add_handler(CommandHandler("risk", self._cmd_risk))
         self.app.add_handler(CommandHandler("help", self._cmd_help))
         self.app.add_handler(CommandHandler("recent", self._cmd_recent))
+        self.app.add_handler(CommandHandler("toggle", self._cmd_toggle))
         self.app.add_handler(CallbackQueryHandler(self._cb_alert_action))
 
     async def send_alert(
@@ -309,6 +310,23 @@ class PolyBot:
             reply_markup=keyboard,
         )
 
+    async def _cmd_toggle(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        args = context.args or []
+        if not args or args[0].lower() != "shadow":
+            await update.message.reply_text("Usage: /toggle shadow")
+            return
+
+        self.settings.SHADOW_MODE = not self.settings.SHADOW_MODE
+        state = "ON" if self.settings.SHADOW_MODE else "OFF"
+        channel = "#ops" if self.settings.SHADOW_MODE else "#alerts"
+        await update.message.reply_text(
+            f"Shadow mode: <b>{state}</b> — alertes dans {channel}",
+            parse_mode="HTML",
+        )
+        logger.info("shadow_mode_toggled", shadow_mode=self.settings.SHADOW_MODE)
+
     async def _cmd_help(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
@@ -320,6 +338,7 @@ class PolyBot:
             "/report [N] — Rapport performance (N jours, défaut 1)\n"
             "/risk &lt;slug&gt; — Analyse resolution risk d'un marché\n"
             "/recent [N] — N dernières alertes (défaut 5)\n"
+            "/toggle shadow — Basculer shadow mode on/off\n"
             "/help — Cette aide",
             parse_mode="HTML",
         )

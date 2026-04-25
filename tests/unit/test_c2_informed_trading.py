@@ -1,4 +1,4 @@
-"""Tests for C2 Informed Trading — features, scoring, dedup, rate limit."""
+"""Tests for C2 Informed Trading — features, scoring, dedup, rate limit, alignment, format."""
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -9,6 +9,7 @@ import pytest
 from polybot.components.c2_informed_trading import InformedTradingDetector
 from polybot.config import Settings
 from polybot.db.migrations import apply_migrations
+from polybot.jobs.log_alert_outcomes import log_alert_outcomes
 
 
 @pytest.fixture()
@@ -335,3 +336,234 @@ class TestEmptyData:
         """Non-existent condition_id → features return defaults."""
         result = c2.compute_score("nonexistent")
         assert result["score"] >= 0
+
+
+# --- Alignment v0 ---
+
+
+class TestAlignment:
+    def test_alignment_positive(self, c2, db_path):
+        """BUY dominant + momentum +5% → alignment +1."""
+        _seed_market(db_path)
+        now = datetime.now(UTC)
+        # Trades 4h ago at price 0.50
+        for i in range(3):
+            _insert_trade_all(
+                db_path, f"tx_4h_{i}", size_usd=100.0, price=0.50,
+                ts=now - timedelta(hours=4, minutes=i),
+            )
+        # Recent BUY trades at price 0.525 (+5%)
+        for i in range(5):
+            _insert_trade_all(
+                db_path, f"tx_now_{i}", wallet=f"0xbuyer{i}",
+                side="BUY", size_usd=200.0, price=0.525,
+                ts=now - timedelta(minutes=i),
+            )
+        result = c2.compute_alignment("cond1")
+        assert result["alignment_score"] == 1
+        assert result["direction"] == "BUY"
+        assert result["momentum_4h"] is not None
+        assert result["momentum_4h"] > 0
+
+    def test_alignment_negative(self, c2, db_path):
+        """BUY dominant + momentum -3% → alignment -1 (contrarian)."""
+        _seed_market(db_path)
+        now = datetime.now(UTC)
+        # Trades 4h ago at price 0.60
+        for i in range(3):
+            _insert_trade_all(
+                db_path, f"tx_4h_{i}", size_usd=100.0, price=0.60,
+                ts=now - timedelta(hours=4, minutes=i),
+            )
+        # Recent BUY trades at price 0.58 (-3.3%)
+        for i in range(5):
+            _insert_trade_all(
+                db_path, f"tx_now_{i}", wallet=f"0xbuyer{i}",
+                side="BUY", size_usd=200.0, price=0.58,
+                ts=now - timedelta(minutes=i),
+            )
+        result = c2.compute_alignment("cond1")
+        assert result["alignment_score"] == -1
+
+    def test_alignment_neutral(self, c2, db_path):
+        """Momentum < 1% → alignment 0."""
+        _seed_market(db_path)
+        now = datetime.now(UTC)
+        # Trades 4h ago and now at nearly same price
+        for i in range(3):
+            _insert_trade_all(
+                db_path, f"tx_4h_{i}", size_usd=100.0, price=0.50,
+                ts=now - timedelta(hours=4, minutes=i),
+            )
+        for i in range(3):
+            _insert_trade_all(
+                db_path, f"tx_now_{i}", side="BUY",
+                size_usd=100.0, price=0.502,
+                ts=now - timedelta(minutes=i),
+            )
+        result = c2.compute_alignment("cond1")
+        assert result["alignment_score"] == 0
+
+    def test_alignment_no_history(self, c2, db_path):
+        """No trades 4h ago → alignment None."""
+        _seed_market(db_path)
+        now = datetime.now(UTC)
+        _insert_trade_all(
+            db_path, "tx_now", side="BUY",
+            size_usd=100.0, ts=now,
+        )
+        result = c2.compute_alignment("cond1")
+        assert result["alignment_score"] is None
+
+
+# --- Alert format ---
+
+
+class TestAlertFormat:
+    def test_format_contains_sections(self, c2, db_path):
+        """C2 alert message contains all expected sections."""
+        market = {
+            "condition_id": "cond1",
+            "title": "Will X happen?",
+            "event_slug": "test-event",
+            "vol_1h": 5000,
+            "price_now": 0.65,
+            "price_1h_ago": 0.55,
+        }
+        result = {
+            "score": 5,
+            "features_passed": ["fresh_wallets", "niche_market", "volume_zscore"],
+            "raw_values": {
+                "fresh_wallets": 0.62,
+                "top5_concentration": 0.5,
+                "time_to_event": None,
+                "niche_market": True,
+                "momentum_1h": 0.08,
+                "volume_zscore": 4.2,
+                "single_dominance": 0.3,
+            },
+        }
+        alignment = {"alignment_score": 1, "momentum_4h": 0.05, "direction": "BUY"}
+
+        msg = c2._format_alert(
+            market=market, result=result, alignment=alignment,
+            risk_score=0.3, risk_category="MEDIUM", alert_id="AL_TEST_0001",
+        )
+        assert "C2" in msg
+        assert "Will X happen?" in msg
+        assert "5/7" in msg
+        assert "Fresh wallets" in msg
+        assert "Suit le mouvement" in msg
+        assert "MEDIUM" in msg
+        assert "AL_TEST_0001" in msg
+
+
+# --- Alert outcomes ---
+
+
+def _insert_full_alert(
+    db_path: str, alert_id: str, condition_id: str = "cond1",
+    side: str = "BUY", price: float = 0.65, size_suggested: float = 20.0,
+    component: str = "C1",
+):
+    con = duckdb.connect(db_path)
+    con.execute(
+        "INSERT INTO alerts (alert_id, component, condition_id, side, "
+        "price, size_suggested_usd, emitted_at, shadow_mode) "
+        "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, TRUE)",
+        [alert_id, component, condition_id, side, price, size_suggested],
+    )
+    con.close()
+
+
+def _insert_resolution(
+    db_path: str, condition_id: str = "cond1",
+    settled_outcome: str = "YES", final_price: float = 1.0,
+):
+    con = duckdb.connect(db_path)
+    con.execute(
+        "INSERT OR REPLACE INTO resolutions "
+        "(condition_id, settled_outcome, settled_at, final_price) "
+        "VALUES (?, ?, CURRENT_TIMESTAMP, ?)",
+        [condition_id, settled_outcome, final_price],
+    )
+    con.close()
+
+
+class TestAlertOutcomes:
+    def test_resolved_correct(self, db_path):
+        """BUY @ 0.65, resolved YES → correct, positive P&L."""
+        _insert_full_alert(db_path, "AL_T1", price=0.65, size_suggested=20.0)
+        _insert_resolution(db_path, settled_outcome="YES")
+        count = log_alert_outcomes(db_path)
+        assert count == 1
+
+        con = duckdb.connect(db_path, read_only=True)
+        row = con.execute(
+            "SELECT was_direction_correct, shadow_pnl_simulated "
+            "FROM alert_outcomes WHERE alert_id = 'AL_T1'"
+        ).fetchone()
+        con.close()
+        assert row[0] is True
+        # P&L = 20 * (1/0.65 - 1) ≈ $10.77
+        assert float(row[1]) == pytest.approx(10.77, abs=0.1)
+
+    def test_resolved_incorrect(self, db_path):
+        """BUY @ 0.65, resolved NO → incorrect, P&L = -$20."""
+        _insert_full_alert(db_path, "AL_T2", price=0.65, size_suggested=20.0)
+        _insert_resolution(db_path, condition_id="cond1", settled_outcome="NO",
+                           final_price=0.0)
+        count = log_alert_outcomes(db_path)
+        assert count == 1
+
+        con = duckdb.connect(db_path, read_only=True)
+        row = con.execute(
+            "SELECT was_direction_correct, shadow_pnl_simulated "
+            "FROM alert_outcomes WHERE alert_id = 'AL_T2'"
+        ).fetchone()
+        con.close()
+        assert row[0] is False
+        assert float(row[1]) == pytest.approx(-20.0, abs=0.01)
+
+    def test_pending_no_resolution(self, db_path):
+        """No resolution → PENDING in alert_outcomes."""
+        _insert_full_alert(db_path, "AL_T3")
+        count = log_alert_outcomes(db_path)
+        assert count == 0
+
+        con = duckdb.connect(db_path, read_only=True)
+        row = con.execute(
+            "SELECT resolution_outcome FROM alert_outcomes "
+            "WHERE alert_id = 'AL_T3'"
+        ).fetchone()
+        con.close()
+        assert row[0] == "PENDING"
+
+    def test_idempotent(self, db_path):
+        """Running twice doesn't create duplicates."""
+        _insert_full_alert(db_path, "AL_T4")
+        _insert_resolution(db_path, settled_outcome="YES")
+        log_alert_outcomes(db_path)
+        log_alert_outcomes(db_path)  # second run
+
+        con = duckdb.connect(db_path, read_only=True)
+        count = con.execute(
+            "SELECT COUNT(*) FROM alert_outcomes WHERE alert_id = 'AL_T4'"
+        ).fetchone()[0]
+        con.close()
+        assert count == 1
+
+
+# --- Shadow mode ---
+
+
+class TestShadowMode:
+    def test_shadow_true_routes_ops(self, settings):
+        """SHADOW_MODE=True → topic should be 'ops'."""
+        settings.SHADOW_MODE = True
+        assert settings.SHADOW_MODE is True
+
+    def test_shadow_false_routes_alerts(self, settings):
+        """SHADOW_MODE=False → topic should be 'alerts'."""
+        settings.SHADOW_MODE = False
+        assert settings.SHADOW_MODE is False

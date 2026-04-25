@@ -322,8 +322,9 @@ class SharpMoneyDetector:
             alert_id=alert_id,
         )
 
-        # M4: all alerts go to #ops (shadow/dry run)
-        msg_id = await self.bot.send_alert("ops", message, reply_markup=keyboard)
+        # Route based on shadow mode
+        topic = "ops" if self.settings.SHADOW_MODE else "alerts"
+        msg_id = await self.bot.send_alert(topic, message, reply_markup=keyboard)
 
         # Also send to #risk if CRITICAL
         if risk_category == "CRITICAL":

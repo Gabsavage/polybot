@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     # C2 Informed Trading
     C2_SCAN_INTERVAL: int = 300  # 5 minutes
 
+    # Shadow mode — True = alerts go to #ops, False = alerts go to #alerts
+    SHADOW_MODE: bool = True
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_DIR: Path = Path("logs")

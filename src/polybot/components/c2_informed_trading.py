@@ -306,6 +306,94 @@ class InformedTradingDetector:
             "raw_values": raw_values,
         }
 
+    # --- Alignment v0 ---
+
+    def compute_alignment(self, condition_id: str) -> dict:
+        """Compute price momentum alignment for a C2 alert.
+
+        Returns {alignment_score: -1|0|+1|None, momentum_4h: float|None,
+                 direction: str|None}.
+        """
+        con = db_connect(self.db_path, read_only=True)
+
+        # Price now: VWAP last 10 min
+        row_now = con.execute(
+            """
+            SELECT SUM(price * size_usd) / NULLIF(SUM(size_usd), 0)
+            FROM trades_all
+            WHERE condition_id = ?
+              AND timestamp_ts >= CURRENT_TIMESTAMP - INTERVAL 10 MINUTE
+            """,
+            [condition_id],
+        ).fetchone()
+        price_now = float(row_now[0]) if row_now and row_now[0] else None
+
+        # Price 4h ago: VWAP in window [4h15m ago, 3h45m ago]
+        row_4h = con.execute(
+            """
+            SELECT SUM(price * size_usd) / NULLIF(SUM(size_usd), 0)
+            FROM trades_all
+            WHERE condition_id = ?
+              AND timestamp_ts >= CURRENT_TIMESTAMP - INTERVAL 255 MINUTE
+              AND timestamp_ts < CURRENT_TIMESTAMP - INTERVAL 225 MINUTE
+            """,
+            [condition_id],
+        ).fetchone()
+        price_4h = float(row_4h[0]) if row_4h and row_4h[0] else None
+
+        # Dominant direction: majority of 1h volume BUY or SELL
+        row_dir = con.execute(
+            """
+            SELECT
+                SUM(CASE WHEN side = 'BUY' THEN size_usd ELSE 0 END) AS buy_vol,
+                SUM(CASE WHEN side = 'SELL' THEN size_usd ELSE 0 END) AS sell_vol
+            FROM trades_all
+            WHERE condition_id = ?
+              AND timestamp_ts >= CURRENT_TIMESTAMP - INTERVAL 1 HOUR
+            """,
+            [condition_id],
+        ).fetchone()
+        con.close()
+
+        buy_vol = float(row_dir[0] or 0) if row_dir else 0
+        sell_vol = float(row_dir[1] or 0) if row_dir else 0
+
+        if buy_vol == 0 and sell_vol == 0:
+            return {"alignment_score": None, "momentum_4h": None, "direction": None}
+
+        direction = "BUY" if buy_vol >= sell_vol else "SELL"
+
+        if price_now is None or price_4h is None or price_4h == 0:
+            return {"alignment_score": None, "momentum_4h": None, "direction": direction}
+
+        momentum_4h = (price_now - price_4h) / price_4h
+
+        # Alignment logic:
+        # BUY dominant + price going up → +1 (follows movement)
+        # BUY dominant + price going down → -1 (contrarian)
+        # SELL dominant → symmetric
+        threshold = 0.01  # 1%
+        if direction == "BUY":
+            if momentum_4h > threshold:
+                alignment = 1
+            elif momentum_4h < -threshold:
+                alignment = -1
+            else:
+                alignment = 0
+        else:  # SELL dominant
+            if momentum_4h < -threshold:
+                alignment = 1
+            elif momentum_4h > threshold:
+                alignment = -1
+            else:
+                alignment = 0
+
+        return {
+            "alignment_score": alignment,
+            "momentum_4h": round(momentum_4h, 4),
+            "direction": direction,
+        }
+
     # --- Dedup and rate limiting ---
 
     def check_dedup(self, condition_id: str) -> bool:
@@ -339,7 +427,14 @@ class InformedTradingDetector:
 
     # --- Alert insertion ---
 
-    def _insert_alert(self, condition_id: str, market: dict, result: dict) -> str:
+    def _insert_alert(
+        self,
+        condition_id: str,
+        market: dict,
+        result: dict,
+        alignment: dict,
+        risk_score: float = 0.3,
+    ) -> str:
         """Insert C2 alert into alerts table. Returns alert_id."""
         con = db_connect(self.db_path)
         alert_id = _next_alert_id(con)
@@ -349,8 +444,10 @@ class InformedTradingDetector:
                 alert_id, component, emitted_at,
                 condition_id, price, size_usd,
                 score, features_passed,
+                alignment_score, momentum_4h,
+                resolution_risk_score,
                 shadow_mode
-            ) VALUES (?, 'C2', CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, TRUE)
+            ) VALUES (?, 'C2', CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)
             """,
             [
                 alert_id,
@@ -359,12 +456,127 @@ class InformedTradingDetector:
                 float(market.get("vol_1h") or 0),
                 result["score"],
                 ",".join(result["features_passed"]),
+                alignment.get("alignment_score"),
+                alignment.get("momentum_4h"),
+                risk_score,
             ],
         )
         con.close()
         return alert_id
 
+    # --- Alert formatting ---
+
+    def _format_alert(
+        self, market: dict, result: dict, alignment: dict,
+        risk_score: float, risk_category: str, alert_id: str,
+    ) -> str:
+        """Format C2 alert message for Telegram."""
+        title = market.get("title") or market["condition_id"][:40]
+        price_now = market.get("price_now")
+        price_ago = market.get("price_1h_ago")
+        vol_1h = float(market.get("vol_1h") or 0)
+
+        # Price change line
+        if price_now and price_ago and float(price_ago) > 0:
+            pn, pa = float(price_now), float(price_ago)
+            change_pct = (pn - pa) / pa * 100
+            price_line = f"📈 Prix : {pa:.2f} → {pn:.2f} ({change_pct:+.1f}%)"
+        elif price_now:
+            price_line = f"📈 Prix : {float(price_now):.2f}"
+        else:
+            price_line = "📈 Prix : N/A"
+
+        # Z-score
+        zscore = result["raw_values"].get("volume_zscore", 0)
+        vol_line = f"💹 Volume 1h : ${vol_1h:,.0f} (Z-score {zscore:.1f})"
+
+        # Features
+        raw = result["raw_values"]
+        feature_lines = []
+        for f in result["features_passed"]:
+            if f == "fresh_wallets":
+                feature_lines.append(f"  ✓ Fresh wallets : {raw['fresh_wallets']:.0%}")
+            elif f == "top5_concentration":
+                feature_lines.append(
+                    f"  ✓ Top-5 concentration : {raw['top5_concentration']:.0%}"
+                )
+            elif f == "time_to_event":
+                feature_lines.append(
+                    f"  ✓ {raw['time_to_event']:.0f}h avant résolution"
+                )
+            elif f == "niche_market":
+                feature_lines.append("  ✓ Niche market")
+            elif f == "momentum_1h":
+                feature_lines.append(
+                    f"  ✓ Momentum 1h : {raw['momentum_1h']:+.1%}"
+                )
+            elif f == "volume_zscore":
+                feature_lines.append(f"  ✓ Volume Z-score : {zscore:.1f}")
+            elif f == "single_dominance":
+                feature_lines.append(
+                    f"  ✓ Single dominance : {raw['single_dominance']:.0%}"
+                )
+
+        # Alignment
+        a_score = alignment.get("alignment_score")
+        m4h = alignment.get("momentum_4h")
+        if a_score == 1:
+            align_str = "📈 Suit le mouvement"
+        elif a_score == -1:
+            align_str = "📉 Contrariant"
+        elif a_score == 0:
+            align_str = "➡️ Neutre"
+        else:
+            align_str = "❓ Données insuffisantes"
+        m4h_str = f" ({m4h:+.1%})" if m4h is not None else ""
+        align_line = f"🧭 Alignment : {align_str}{m4h_str}"
+
+        # Risk
+        risk_icon = {"LOW": "🟢", "MEDIUM": "🟡", "HIGH": "🟠", "CRITICAL": "🔴"}.get(
+            risk_category, "🟡"
+        )
+        risk_line = f"⚖️ Risk : {risk_icon} {risk_category} ({risk_score:.2f})"
+
+        # Market link
+        event_slug = market.get("event_slug")
+        link = (
+            f"https://polymarket.com/event/{event_slug}"
+            if event_slug
+            else "https://polymarket.com"
+        )
+
+        parts = [
+            "🔴 <b>Informed Trading Alert (C2)</b>",
+            "",
+            f"<b>{title}</b>",
+            price_line,
+            vol_line,
+            "",
+            f"🧬 Score : <b>{result['score']}/7</b>",
+            *feature_lines,
+            "",
+            align_line,
+            risk_line,
+            "",
+            f"🔗 {link}",
+            f"⏱️ <code>{alert_id}</code>",
+        ]
+        return "\n".join(parts)
+
     # --- Main scan loop ---
+
+    def _get_risk_scorer(self):
+        """Lazy-init C3 risk scorer if API key available."""
+        if not hasattr(self, "_risk_scorer"):
+            self._risk_scorer = None
+            if self.settings.ANTHROPIC_API_KEY:
+                from polybot.components.c3_resolution_risk import ResolutionRiskScorer
+
+                self._risk_scorer = ResolutionRiskScorer(
+                    db_path=self.db_path,
+                    anthropic_api_key=self.settings.ANTHROPIC_API_KEY,
+                )
+        return self._risk_scorer
 
     def scan_once(self) -> list[dict]:
         """One scan cycle. Returns list of alerts emitted."""
@@ -389,7 +601,24 @@ class InformedTradingDetector:
                 logger.info("c2_rate_limit_reached")
                 break
 
-            alert_id = self._insert_alert(cid, market, result)
+            # Alignment v0 (informational only)
+            alignment = self.compute_alignment(cid)
+
+            # C3 risk score
+            risk_score = 0.3
+            risk_category = "MEDIUM"
+            scorer = self._get_risk_scorer()
+            if scorer:
+                try:
+                    risk_result = scorer.score_market(cid)
+                    risk_score = risk_result["score"]
+                    risk_category = risk_result["category"]
+                except Exception:
+                    logger.warning("c2_c3_scoring_failed", condition_id=cid[:16])
+
+            alert_id = self._insert_alert(
+                cid, market, result, alignment, risk_score,
+            )
 
             alert = {
                 "alert_id": alert_id,
@@ -398,6 +627,9 @@ class InformedTradingDetector:
                 "score": result["score"],
                 "features_passed": result["features_passed"],
                 "raw_values": result["raw_values"],
+                "alignment": alignment,
+                "risk_score": risk_score,
+                "risk_category": risk_category,
             }
             alerts_emitted.append(alert)
 
@@ -407,9 +639,48 @@ class InformedTradingDetector:
                 market=market.get("title", cid[:20]),
                 score=result["score"],
                 features=result["features_passed"],
+                alignment=alignment.get("alignment_score"),
             )
 
         return alerts_emitted
+
+    async def _emit_telegram(self, alert: dict) -> None:
+        """Send C2 alert to Telegram."""
+        if not self.bot:
+            return
+
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        message = self._format_alert(
+            market=alert["market"],
+            result=alert,
+            alignment=alert["alignment"],
+            risk_score=alert["risk_score"],
+            risk_category=alert["risk_category"],
+            alert_id=alert["alert_id"],
+        )
+
+        event_slug = alert["market"].get("event_slug")
+        market_url = (
+            f"https://polymarket.com/event/{event_slug}"
+            if event_slug
+            else "https://polymarket.com"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📊 Marché", url=market_url)],
+        ])
+
+        # Route based on shadow mode
+        topic = "ops" if self.settings.SHADOW_MODE else "alerts"
+        msg_id = await self.bot.send_alert(topic, message, reply_markup=keyboard)
+
+        if msg_id:
+            con = db_connect(self.db_path)
+            con.execute(
+                "UPDATE alerts SET telegram_message_id = ? WHERE alert_id = ?",
+                [msg_id, alert["alert_id"]],
+            )
+            con.close()
 
     async def run_forever(self) -> None:
         """Main loop: scan every 5 min."""
@@ -418,6 +689,8 @@ class InformedTradingDetector:
             start = time.monotonic()
             try:
                 alerts = self.scan_once()
+                for alert in alerts:
+                    await self._emit_telegram(alert)
                 if alerts:
                     logger.info("c2_scan_complete", alerts=len(alerts))
             except Exception:
