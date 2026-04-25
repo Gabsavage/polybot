@@ -3,6 +3,7 @@
 import asyncio
 
 import structlog
+from telegram import BotCommand
 
 from polybot.components.c1_sharp_money import SharpMoneyDetector
 from polybot.config import Settings
@@ -25,6 +26,12 @@ async def main() -> None:
     async with bot.app:
         await bot.app.start()
         await bot.app.updater.start_polling(drop_pending_updates=True)
+        await bot.app.bot.set_my_commands([
+            BotCommand("status", "Santé du système"),
+            BotCommand("bankroll", "Afficher / mettre à jour le bankroll"),
+            BotCommand("recent", "Dernières alertes C1"),
+            BotCommand("help", "Liste des commandes"),
+        ])
         logger.info("telegram_bot_started")
 
         try:
