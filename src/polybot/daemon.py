@@ -1,16 +1,40 @@
-"""Polybot M4 daemon — Telegram bot + C1 Sharp Money detector."""
+"""Polybot M4 daemon — Telegram bot + C1 Sharp Money + daily report."""
 
 import asyncio
+from datetime import datetime, time, timedelta, timezone
 
 import structlog
 from telegram import BotCommand
 
 from polybot.components.c1_sharp_money import SharpMoneyDetector
+from polybot.components.report import generate_report
 from polybot.config import Settings
 from polybot.logging import setup_logging
 from polybot.telegram.bot import PolyBot
 
 logger = structlog.get_logger()
+
+CEST = timezone(timedelta(hours=2))
+DAILY_REPORT_HOUR = 9  # 09:00 CEST
+
+
+async def schedule_daily_report(bot: PolyBot, db_path: str) -> None:
+    """Send daily report at 09:00 CEST every day."""
+    while True:
+        now = datetime.now(CEST)
+        target = datetime.combine(now.date(), time(DAILY_REPORT_HOUR, 0), CEST)
+        if now >= target:
+            target += timedelta(days=1)
+        wait_seconds = (target - now).total_seconds()
+        logger.info("daily_report_scheduled", next_at=target.isoformat(), wait_s=int(wait_seconds))
+        await asyncio.sleep(wait_seconds)
+
+        try:
+            report = generate_report(db_path, days=1, bot_start=bot.start_time)
+            await bot.send_alert("ops", report)
+            logger.info("daily_report_sent")
+        except Exception:
+            logger.exception("daily_report_failed")
 
 
 async def main() -> None:
@@ -21,21 +45,25 @@ async def main() -> None:
 
     bot = PolyBot(settings)
     c1 = SharpMoneyDetector(bot=bot, settings=settings)
+    db_path = str(settings.DUCKDB_PATH)
 
-    # Start bot polling + C1 loop concurrently
     async with bot.app:
         await bot.app.start()
         await bot.app.updater.start_polling(drop_pending_updates=True)
         await bot.app.bot.set_my_commands([
             BotCommand("status", "Santé du système"),
             BotCommand("bankroll", "Afficher / mettre à jour le bankroll"),
+            BotCommand("report", "Rapport performance quotidien"),
             BotCommand("recent", "Dernières alertes C1"),
             BotCommand("help", "Liste des commandes"),
         ])
         logger.info("telegram_bot_started")
 
         try:
-            await c1.run_forever()
+            await asyncio.gather(
+                c1.run_forever(),
+                schedule_daily_report(bot, db_path),
+            )
         finally:
             await bot.app.updater.stop()
             await bot.app.stop()

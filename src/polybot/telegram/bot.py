@@ -42,6 +42,7 @@ class PolyBot:
     def _register_handlers(self) -> None:
         self.app.add_handler(CommandHandler("status", self._cmd_status))
         self.app.add_handler(CommandHandler("bankroll", self._cmd_bankroll))
+        self.app.add_handler(CommandHandler("report", self._cmd_report))
         self.app.add_handler(CommandHandler("help", self._cmd_help))
         self.app.add_handler(CommandHandler("recent", self._cmd_recent))
         self.app.add_handler(CallbackQueryHandler(self._cb_alert_action))
@@ -210,6 +211,20 @@ class PolyBot:
             f"📅 MAJ : {updated_at}{warning}"
         )
 
+    async def _cmd_report(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        from polybot.components.report import generate_report
+
+        args = context.args or []
+        days = 1
+        if args:
+            with contextlib.suppress(ValueError):
+                days = min(int(args[0]), 30)
+
+        report = generate_report(self.db_path, days=days, bot_start=self.start_time)
+        await update.message.reply_text(report, parse_mode="HTML")
+
     async def _cmd_help(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
@@ -218,6 +233,7 @@ class PolyBot:
             "/status — Santé du système\n"
             "/bankroll — Afficher le bankroll\n"
             "/bankroll set &lt;montant&gt; — Mettre à jour le bankroll\n"
+            "/report [N] — Rapport performance (N jours, défaut 1)\n"
             "/recent [N] — N dernières alertes (défaut 5)\n"
             "/help — Cette aide",
             parse_mode="HTML",
