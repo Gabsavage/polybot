@@ -57,9 +57,19 @@ def _format_alert(
     bankroll: float,
     alert_id: str,
     tags: list[str],
+    risk_score: float = 0.3,
+    risk_category: str = "MEDIUM",
+    risk_reason: str | None = None,
 ) -> str:
     """Format C1 alert message for Telegram — compact, mobile-first."""
     pct = round(size_suggested / bankroll * 100, 1) if bankroll > 0 else 0
+
+    risk_icon = {"LOW": "🟢", "MEDIUM": "🟡", "HIGH": "🟠", "CRITICAL": "🔴"}.get(
+        risk_category, "🟡"
+    )
+    risk_line = f"⚖️ Risk : {risk_icon} {risk_category} ({risk_score:.2f})"
+    if risk_reason:
+        risk_line += f"\n   └ {risk_reason}"
 
     parts = [
         f"🎯 <b>C1 Sharp Money</b>  ·  <code>{alert_id}</code>",
@@ -69,6 +79,7 @@ def _format_alert(
         "",
         f"BUY {outcome} @ <b>{price:.2f}</b>  ·  ${size_usd:,.0f}",
         f"💡 Sizing : <b>${size_suggested:,.0f}</b> ({pct}% bankroll)",
+        risk_line,
     ]
     if tags:
         parts.append("\n".join(tags))
@@ -111,6 +122,14 @@ class SharpMoneyDetector:
         self.settings = settings
         self.db_path = str(settings.DUCKDB_PATH)
         self.last_check_ts = datetime.now(UTC)
+        self.risk_scorer = None
+        if settings.ANTHROPIC_API_KEY:
+            from polybot.components.c3_resolution_risk import ResolutionRiskScorer
+
+            self.risk_scorer = ResolutionRiskScorer(
+                db_path=self.db_path,
+                anthropic_api_key=settings.ANTHROPIC_API_KEY,
+            )
 
     def _fetch_new_trades(self) -> list[dict]:
         """Query trades since last check, joined with tracked_wallets."""
@@ -231,6 +250,25 @@ class SharpMoneyDetector:
             ).days
         tags = self._build_tags(liquidity, size_suggested, bankroll_age_days)
 
+        # C3 Resolution Risk
+        risk_score = 0.3
+        risk_category = "MEDIUM"
+        risk_reason = None
+        if self.risk_scorer:
+            try:
+                risk_result = self.risk_scorer.score_market(condition_id)
+                risk_score = risk_result["score"]
+                risk_category = risk_result["category"]
+                if risk_result.get("reasons"):
+                    risk_reason = risk_result["reasons"][0]
+                if risk_result.get("llm_unavailable"):
+                    tags.append("⚠️ LLM unavailable — rules-only score")
+            except Exception:
+                logger.warning("c3_scoring_failed", condition_id=condition_id[:16])
+
+        if risk_category == "CRITICAL":
+            tags.insert(0, "🔴 CRITICAL RISK")
+
         # Build tier label
         tier_label = "A1" if tier_a_conf >= 0.90 else "A2"
 
@@ -244,7 +282,7 @@ class SharpMoneyDetector:
                 wallet_address, condition_id, side, size_usd, price,
                 size_suggested_usd, resolution_risk_score,
                 tags, shadow_mode, dedup_hash
-            ) VALUES (?, 'C1', CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, 0.3, ?, TRUE, ?)
+            ) VALUES (?, 'C1', CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)
             """,
             [
                 alert_id,
@@ -255,6 +293,7 @@ class SharpMoneyDetector:
                 size_usd,
                 float(trade["price"]),
                 size_suggested,
+                risk_score,
                 ",".join(tags) if tags else None,
                 dhash,
             ],
@@ -273,6 +312,9 @@ class SharpMoneyDetector:
             bankroll=bankroll,
             alert_id=alert_id,
             tags=tags,
+            risk_score=risk_score,
+            risk_category=risk_category,
+            risk_reason=risk_reason,
         )
         keyboard = _build_inline_keyboard(
             event_slug=trade["event_slug"],
@@ -282,6 +324,10 @@ class SharpMoneyDetector:
 
         # M4: all alerts go to #ops (shadow/dry run)
         msg_id = await self.bot.send_alert("ops", message, reply_markup=keyboard)
+
+        # Also send to #risk if CRITICAL
+        if risk_category == "CRITICAL":
+            await self.bot.send_alert("risk", message)
 
         if msg_id:
             con = db_connect(self.db_path)

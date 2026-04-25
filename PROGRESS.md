@@ -1,5 +1,61 @@
 # Polymarket Bot — Progress
 
+## 2026-04-24 — M3 + M4 en cours (deploy pending)
+
+### M3 — Enrichissement minimal
+
+| Livrable | Status | Notes |
+|----------|--------|-------|
+| Migration 003 (proxy_eoa_map, resolutions, trades_all) | Done | 3 tables |
+| Migration 004 (trades_all PK composite tx_hash_log_idx) | Done | Fix après discovery empirique |
+| ADR-014 (Proxy Factory contracts) | Done | |
+| indexer_proxy_factory | Done | Pivot : scan factory brut → lookup ciblé (15 RPC calls) |
+| indexer_resolutions_uma | Done | Pivot : UMA Oracle → ConditionalTokens contract |
+| indexer_onchain_alchemy | Done | Pivot : Goldsky (mort 108j) → Alchemy RPC direct |
+| indexer_onchain_goldsky | Reporté | Subgraph bloqué block 81.2M, 108 jours de retard |
+| populate_volume_1h | Reporté | Dépendait de Goldsky, à revisiter |
+
+**Pivots majeurs M3 :**
+- Goldsky subgraph mort → Alchemy RPC direct pour trades on-chain
+- Proxy factory scan brut (92K proxies, 0/15 matchés, ~100h ETA) → lookup ciblé (15/15 matchés, 15 calls, 2 min)
+- UMA Oracle V2 quasi-inactif → ConditionalTokens ConditionResolution events (32K+ résolutions)
+- Alchemy free tier → PAYG ($25 cap) pour supporter les backfills
+
+**Données collectées :**
+- proxy_eoa_map : 15/15 Tier A matchés (7 Gnosis Safe, 3 first_tx, 5 self-EOA)
+- resolutions : 32K+ (backfill en cours sur VPS)
+- trades_all : pipeline validé, scan 24h initial au deploy
+
+### M4 — Bot Telegram + C1 Sharp Money Copy
+
+| Livrable | Status | Notes |
+|----------|--------|-------|
+| Migration 005 (alerts + bankroll_state v2) | Done | DROP + recreate (tables vides) |
+| Bot Telegram (commands) | Done | /status, /bankroll, /help, /recent |
+| C1 Sharp Money (détection + filtrage) | Done | 4 filtres, BUY only, shadow mode |
+| Sizing Kelly | Done | Quarter-Kelly, caps 5%/$10 |
+| Daemon combiné (bot + C1) | Done | asyncio, single process |
+
+**C1 features :**
+- 4 filtres : size min $1000, rate limit 3h, dedup hash 5min, liquidity $500
+- BUY only (v1)
+- Quarter-Kelly : A1 edge 4% conf 1.0, A2 edge 2% conf 0.6
+- Shadow mode : tout dans #ops (pas #alerts)
+- resolution_risk_score = 0.3 placeholder (vrai C3 en M5)
+- Alert IDs : AL_YYYYMMDD_XXXX séquentiels
+
+**Tests : 104 unit tests pass, lint clean**
+
+### Deploy pending
+
+Deploy combiné M3+M4 en cours :
+- Migrations 003, 004, 005
+- 3 timers horaires M3 (proxy_factory, resolutions, onchain_alchemy)
+- 1 daemon M4 (bot + C1)
+- Backfills : proxy 15/15 done, resolutions en cours (~32K), onchain 24h au deploy
+
+---
+
 ## 2026-04-22 — C4 Macro Discovery (exploration indépendante)
 
 > **Nota** : C4 est un composant exploratoire **séparé** du plan B (M1-M12).

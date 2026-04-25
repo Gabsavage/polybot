@@ -43,6 +43,7 @@ class PolyBot:
         self.app.add_handler(CommandHandler("status", self._cmd_status))
         self.app.add_handler(CommandHandler("bankroll", self._cmd_bankroll))
         self.app.add_handler(CommandHandler("report", self._cmd_report))
+        self.app.add_handler(CommandHandler("risk", self._cmd_risk))
         self.app.add_handler(CommandHandler("help", self._cmd_help))
         self.app.add_handler(CommandHandler("recent", self._cmd_recent))
         self.app.add_handler(CallbackQueryHandler(self._cb_alert_action))
@@ -225,6 +226,80 @@ class PolyBot:
         report = generate_report(self.db_path, days=days, bot_start=self.start_time)
         await update.message.reply_text(report, parse_mode="HTML")
 
+    async def _cmd_risk(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        from polybot.components.c3_resolution_risk import ResolutionRiskScorer
+
+        args = context.args or []
+        if not args:
+            await update.message.reply_text(
+                "Usage: /risk &lt;slug ou URL polymarket&gt;",
+                parse_mode="HTML",
+            )
+            return
+
+        query = args[0]
+        slug = query.rstrip("/").split("/")[-1] if "polymarket.com" in query else query
+
+        # Lookup condition_id from slug or event_slug
+        con = db_connect(self.db_path, read_only=True)
+        row = con.execute(
+            "SELECT condition_id, title, category, resolution_source, end_date, event_slug "
+            "FROM markets WHERE slug = ? OR event_slug = ? LIMIT 1",
+            [slug, slug],
+        ).fetchone()
+        con.close()
+
+        if not row:
+            await update.message.reply_text(f"Marché '{slug}' non trouvé.")
+            return
+
+        condition_id, title, category, res_source, end_date, event_slug = row
+
+        if not self.settings.ANTHROPIC_API_KEY:
+            await update.message.reply_text("ANTHROPIC_API_KEY non configurée.")
+            return
+
+        scorer = ResolutionRiskScorer(
+            self.db_path, self.settings.ANTHROPIC_API_KEY
+        )
+        result = scorer.score_market(condition_id)
+
+        risk_icon = {"LOW": "🟢", "MEDIUM": "🟡", "HIGH": "🟠", "CRITICAL": "🔴"}.get(
+            result["category"], "🟡"
+        )
+        cached_label = "cached" if result.get("cached") else "fresh"
+
+        lines = [
+            "⚖️ <b>Resolution Risk Analysis</b>",
+            "",
+            f"<b>{title or slug}</b>",
+            f"Score : {risk_icon} <b>{result['category']}</b> ({result['score']:.3f})",
+        ]
+
+        if result.get("llm_score") is not None:
+            lines.append(f"\n🤖 <b>LLM</b> ({cached_label}) : {result['llm_score']:.2f}")
+            for r in result.get("reasons", [])[:3]:
+                lines.append(f"   · {r}")
+
+        lines.append(f"\n📏 <b>Rules</b> : {result['rules_score']:.3f}")
+        lines.append(f"   Oracle : {res_source or 'N/A'} ({result['oracle_score']:.1f})")
+
+        if result.get("red_flags"):
+            lines.append("\n🚩 " + " · ".join(result["red_flags"]))
+
+        if event_slug:
+            lines.append(
+                f"\n🔗 <a href=\"https://polymarket.com/event/{event_slug}\">Voir le marché</a>"
+            )
+
+        await update.message.reply_text(
+            "\n".join(lines),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+
     async def _cmd_help(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
@@ -234,6 +309,7 @@ class PolyBot:
             "/bankroll — Afficher le bankroll\n"
             "/bankroll set &lt;montant&gt; — Mettre à jour le bankroll\n"
             "/report [N] — Rapport performance (N jours, défaut 1)\n"
+            "/risk &lt;slug&gt; — Analyse resolution risk d'un marché\n"
             "/recent [N] — N dernières alertes (défaut 5)\n"
             "/help — Cette aide",
             parse_mode="HTML",

@@ -35,11 +35,11 @@ ORDER_FILLED_TOPIC = (
 # Filter out events where taker is the exchange contract itself (internal routing)
 EXCHANGE_ADDRS_LOWER = {addr.lower() for addr in EXCHANGES}
 
-BATCH_SIZE_BLOCKS = 2000
-SLEEP_BETWEEN_BATCHES = 0.1
-INITIAL_LOOKBACK = 130_000  # ~24h of Polygon blocks for first run
-REQUEST_TIMEOUT = 15.0
-LOG_EVERY_N_BATCHES = 100
+BATCH_SIZE_BLOCKS = 100  # OrderFilled is very dense (~150 events/block)
+SLEEP_BETWEEN_BATCHES = 0.2
+INITIAL_LOOKBACK = 5_000  # ~2.5h for initial scan, incremental extends
+REQUEST_TIMEOUT = 30.0
+LOG_EVERY_N_BATCHES = 25
 
 INSERT_SQL = """
 INSERT INTO trades_all (

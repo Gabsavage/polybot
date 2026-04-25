@@ -54,6 +54,7 @@ async def main() -> None:
             BotCommand("status", "Santé du système"),
             BotCommand("bankroll", "Afficher / mettre à jour le bankroll"),
             BotCommand("report", "Rapport performance quotidien"),
+            BotCommand("risk", "Analyse resolution risk d'un marché"),
             BotCommand("recent", "Dernières alertes C1"),
             BotCommand("help", "Liste des commandes"),
         ])

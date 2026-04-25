@@ -4,6 +4,36 @@ Decision gates entre milestones de la phase B. Reference : B_plan_developpement.
 
 ---
 
+## Gate M2 → M3 — FINAL
+
+**Date** : 2026-04-24
+**Tag** : `m2-complete`
+**Decision** : [x] GO
+
+### Critères quantitatifs
+
+- [x] COUNT(markets) > 10 000 → **64 307** ✅
+- [x] COUNT(trades) > 10 → **871** ✅
+- [x] COUNT(tracked_wallets WHERE tier='A') = 15 → **15** ✅
+- [x] Logs < 1% erreurs / 24h → **< 0.1%** ✅ (1 seul échec markets timer sur ~160 runs)
+
+### Incidents
+
+- Trades daemon : 119 restarts au déploiement initial (service activé
+  avant migration/seed). Stabilisé après, 0 erreurs depuis.
+- Markets gamma : upsert initial 58 min (row-by-row executemany).
+  Optimisé via temp table bulk → 11s. Timer remis à 15 min.
+
+### Key metrics prod
+
+- Markets : 64K via Gamma API (3x l'estimation initiale de 20K)
+- Trades : 871 pour 15 wallets Tier A
+- Markets sync : 97s total (87s fetch + 11s upsert) — viable sur timer 15 min
+- RAM : 565 MB / 7.8 GB
+- 6 services systemd actifs (3 M1 + 2 M2 + trades daemon)
+
+---
+
 ## Gate M1 → M2 — FINAL
 
 **Date d'ouverture du gate** : 2026-04-22 12:15 CEST

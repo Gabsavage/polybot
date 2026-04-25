@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     SNAPSHOT_MIN_VOLUME_24H: float = 50_000.0
     SNAPSHOT_UNIVERSE_REFRESH_HOURS: int = 6
 
+    # Anthropic (Claude Haiku for C3 resolution risk)
+    ANTHROPIC_API_KEY: str = ""
+
     # Telegram
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: int = 0
