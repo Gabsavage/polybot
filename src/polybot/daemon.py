@@ -1,4 +1,4 @@
-"""Polybot M4 daemon — Telegram bot + C1 Sharp Money + daily report."""
+"""Polybot M6 daemon — Telegram bot + C1 Sharp Money + C2 Informed Trading + daily report."""
 
 import asyncio
 from datetime import datetime, time, timedelta, timezone
@@ -7,6 +7,7 @@ import structlog
 from telegram import BotCommand
 
 from polybot.components.c1_sharp_money import SharpMoneyDetector
+from polybot.components.c2_informed_trading import InformedTradingDetector
 from polybot.components.report import generate_report
 from polybot.config import Settings
 from polybot.logging import setup_logging
@@ -45,6 +46,7 @@ async def main() -> None:
 
     bot = PolyBot(settings)
     c1 = SharpMoneyDetector(bot=bot, settings=settings)
+    c2 = InformedTradingDetector(settings=settings, bot=bot)
     db_path = str(settings.DUCKDB_PATH)
 
     async with bot.app:
@@ -63,6 +65,7 @@ async def main() -> None:
         try:
             await asyncio.gather(
                 c1.run_forever(),
+                c2.run_forever(),
                 schedule_daily_report(bot, db_path),
             )
         finally:

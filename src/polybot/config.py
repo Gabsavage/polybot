@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     C1_SIZE_MIN_ALERT: float = 10.0
     C1_POLL_INTERVAL: int = 60
 
+    # C2 Informed Trading
+    C2_SCAN_INTERVAL: int = 300  # 5 minutes
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_DIR: Path = Path("logs")
