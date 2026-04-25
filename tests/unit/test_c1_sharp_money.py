@@ -276,23 +276,22 @@ class TestAlertFormat:
             size_usd=2000.0,
             size_suggested=20.0,
             bankroll=2000.0,
-            event_slug="will-x-happen",
             alert_id="AL_20260424_0001",
             tags=[],
         )
-        assert "Sharp Money Alert" in msg
+        assert "C1 Sharp Money" in msg
         assert "SharpTrader" in msg
         assert "Tier A1" in msg
         assert "Will X happen?" in msg
         assert "BUY Yes" in msg
-        assert "$20.00" in msg
-        assert "polymarket.com" in msg
+        assert "$20" in msg
+        assert "AL_20260424_0001" in msg
 
     def test_low_liquidity_tag(self):
         msg = _format_alert(
             wallet_name="W", tier_label="A1", market_title="M",
             outcome="Yes", price=0.5, size_usd=1000, size_suggested=100,
-            bankroll=2000, event_slug=None, alert_id="AL_TEST",
+            bankroll=2000, alert_id="AL_TEST",
             tags=["⚠️ low_liquidity"],
         )
         assert "low_liquidity" in msg

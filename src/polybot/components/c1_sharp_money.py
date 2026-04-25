@@ -55,34 +55,52 @@ def _format_alert(
     size_usd: float,
     size_suggested: float,
     bankroll: float,
-    event_slug: str | None,
     alert_id: str,
     tags: list[str],
 ) -> str:
-    """Format C1 alert message for Telegram."""
+    """Format C1 alert message for Telegram — compact, mobile-first."""
     pct = round(size_suggested / bankroll * 100, 1) if bankroll > 0 else 0
-    tag_lines = "\n".join(tags) if tags else ""
-    link = (
+
+    parts = [
+        f"🎯 <b>C1 Sharp Money</b>  ·  <code>{alert_id}</code>",
+        "",
+        f"<b>{market_title}</b>",
+        f"👤 {wallet_name}  ·  Tier {tier_label}",
+        "",
+        f"BUY {outcome} @ <b>{price:.2f}</b>  ·  ${size_usd:,.0f}",
+        f"💡 Sizing : <b>${size_suggested:,.0f}</b> ({pct}% bankroll)",
+    ]
+    if tags:
+        parts.append("\n".join(tags))
+
+    return "\n".join(parts)
+
+
+def _build_inline_keyboard(
+    event_slug: str | None,
+    wallet: str,
+    alert_id: str,
+):
+    """Build inline keyboard for the alert message."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    market_url = (
         f"https://polymarket.com/event/{event_slug}"
         if event_slug
         else "https://polymarket.com"
     )
+    wallet_url = f"https://polymarket.com/portfolio/{wallet}"
 
-    parts = [
-        "🎯 <b>Sharp Money Alert (C1)</b>",
-        f"👤 Wallet : {wallet_name} (Tier {tier_label})",
-        f"📊 Marché : {market_title}",
-        f"💰 Trade : BUY {outcome} @ {price:.2f}",
-        f"💵 Size : ${size_usd:,.0f}",
-        "⚖️ Resolution Risk : N/A",
-        f"💡 Size suggéré : ${size_suggested:,.2f} ({pct}%, quarter-Kelly)",
-    ]
-    if tag_lines:
-        parts.append(tag_lines)
-    parts.append(f"🔗 {link}")
-    parts.append(f"⏱️ {alert_id}")
-
-    return "\n".join(parts)
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📊 Marché", url=market_url),
+            InlineKeyboardButton("👤 Wallet", url=wallet_url),
+        ],
+        [
+            InlineKeyboardButton("✅ Copié", callback_data=f"copied:{alert_id}"),
+            InlineKeyboardButton("⏭️ Skip", callback_data=f"skip:{alert_id}"),
+        ],
+    ])
 
 
 class SharpMoneyDetector:
@@ -216,22 +234,7 @@ class SharpMoneyDetector:
         # Build tier label
         tier_label = "A1" if tier_a_conf >= 0.90 else "A2"
 
-        # Format alert
-        message = _format_alert(
-            wallet_name=trade["wallet_name"] or wallet[:12],
-            tier_label=tier_label,
-            market_title=trade["market_title"] or condition_id[:20],
-            outcome=trade["outcome"] or "Yes",
-            price=float(trade["price"]),
-            size_usd=size_usd,
-            size_suggested=size_suggested,
-            bankroll=bankroll,
-            event_slug=trade["event_slug"],
-            alert_id="",  # placeholder, set after DB insert
-            tags=tags,
-        )
-
-        # Insert alert into DB
+        # Insert alert into DB first to get alert_id
         con = db_connect(self.db_path)
         alert_id = _next_alert_id(con)
         con.execute(
@@ -258,11 +261,27 @@ class SharpMoneyDetector:
         )
         con.close()
 
-        # Update alert_id in message and send
-        message = message.replace("⏱️ ", f"⏱️ {alert_id}")
+        # Format alert + inline keyboard
+        message = _format_alert(
+            wallet_name=trade["wallet_name"] or wallet[:12],
+            tier_label=tier_label,
+            market_title=trade["market_title"] or condition_id[:20],
+            outcome=trade["outcome"] or "Yes",
+            price=float(trade["price"]),
+            size_usd=size_usd,
+            size_suggested=size_suggested,
+            bankroll=bankroll,
+            alert_id=alert_id,
+            tags=tags,
+        )
+        keyboard = _build_inline_keyboard(
+            event_slug=trade["event_slug"],
+            wallet=wallet,
+            alert_id=alert_id,
+        )
 
         # M4: all alerts go to #ops (shadow/dry run)
-        msg_id = await self.bot.send_alert("ops", message)
+        msg_id = await self.bot.send_alert("ops", message, reply_markup=keyboard)
 
         if msg_id:
             con = db_connect(self.db_path)

@@ -7,6 +7,7 @@ import structlog
 from telegram import Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
 )
@@ -43,9 +44,10 @@ class PolyBot:
         self.app.add_handler(CommandHandler("bankroll", self._cmd_bankroll))
         self.app.add_handler(CommandHandler("help", self._cmd_help))
         self.app.add_handler(CommandHandler("recent", self._cmd_recent))
+        self.app.add_handler(CallbackQueryHandler(self._cb_alert_action))
 
     async def send_alert(
-        self, topic: str, message: str
+        self, topic: str, message: str, reply_markup=None
     ) -> int | None:
         """Send a message to a topic in the group. Returns message_id."""
         thread_id = self.topics.get(topic)
@@ -59,11 +61,56 @@ class PolyBot:
                 text=message,
                 parse_mode="HTML",
                 disable_web_page_preview=True,
+                reply_markup=reply_markup,
             )
             return msg.message_id
         except Exception:
             logger.exception("telegram_send_failed", topic=topic)
             return None
+
+    # --- Callback queries ---
+
+    async def _cb_alert_action(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Handle Copié / Skip button presses."""
+        query = update.callback_query
+        await query.answer()
+
+        data = query.data or ""
+        if ":" not in data:
+            return
+
+        action, alert_id = data.split(":", 1)
+        if action not in ("copied", "skip"):
+            return
+
+        # Update alignment_score in DB: copied=+1, skip=-1
+        score = 1 if action == "copied" else -1
+        con = db_connect(self.db_path)
+        con.execute(
+            "UPDATE alerts SET alignment_score = ? WHERE alert_id = ?",
+            [score, alert_id],
+        )
+        con.close()
+
+        # Update button text to show selection
+        label = "✅ Copié" if action == "copied" else "⏭️ Skip"
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.edit_message_text(
+                text=query.message.text_html + f"\n\n<i>{label}</i>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+
+        logger.info(
+            "alert_action",
+            alert_id=alert_id,
+            action=action,
+            score=score,
+        )
 
     # --- Commands ---
 
