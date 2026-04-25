@@ -18,12 +18,13 @@ T = TypeVar("T")
 def connect(db_path: str, read_only: bool = False) -> duckdb.DuckDBPyConnection:
     """Connect to DuckDB with retry on IOException (lock conflicts).
 
-    DuckDB is single-writer. When multiple processes access the same DB,
-    write locks can conflict. This helper retries with exponential backoff.
+    read_only is accepted for API compat but ignored — all connections
+    use read-write mode to avoid DuckDB's "different configuration" error
+    when mixing connection types in the same process.
     """
     for attempt in range(MAX_RETRIES):
         try:
-            return duckdb.connect(db_path, read_only=read_only)
+            return duckdb.connect(db_path)
         except duckdb.IOException:
             if attempt == MAX_RETRIES - 1:
                 raise
@@ -48,7 +49,7 @@ def db_read_with_retry(
     for attempt in range(max_retries):
         con = None
         try:
-            con = duckdb.connect(db_path, read_only=True)
+            con = duckdb.connect(db_path)
             result = callback(con)
             return result
         except duckdb.IOException:
