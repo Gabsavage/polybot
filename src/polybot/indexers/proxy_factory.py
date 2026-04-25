@@ -162,19 +162,22 @@ def resolve_eoa(
 
 def get_unresolved_wallets(db_path: str) -> list[str]:
     """Find tracked wallets that don't have a proxy_eoa_map entry."""
-    con = duckdb.connect(db_path, read_only=True)
-    rows = con.execute(
-        """
-        SELECT tw.address
-        FROM tracked_wallets tw
-        LEFT JOIN proxy_eoa_map pem
-            ON LOWER(tw.address) = LOWER(pem.proxy_address)
-        WHERE pem.proxy_address IS NULL
-          AND tw.active = TRUE
-        """
-    ).fetchall()
-    con.close()
-    return [r[0] for r in rows]
+    from polybot.db.connection import db_read_with_retry
+
+    def _do(con):
+        rows = con.execute(
+            """
+            SELECT tw.address
+            FROM tracked_wallets tw
+            LEFT JOIN proxy_eoa_map pem
+                ON LOWER(tw.address) = LOWER(pem.proxy_address)
+            WHERE pem.proxy_address IS NULL
+              AND tw.active = TRUE
+            """
+        ).fetchall()
+        return [r[0] for r in rows]
+
+    return db_read_with_retry(db_path, _do)
 
 
 def upsert_mapping(

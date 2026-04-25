@@ -9,6 +9,7 @@ Proposed/disputed info (from UMA Oracle) is not captured in v1 — those
 fields remain NULL and can be enriched in M7.
 """
 
+import signal
 import time
 from datetime import UTC, datetime
 
@@ -38,11 +39,14 @@ BATCH_SIZE_BLOCKS = 5000  # PAYG tier supports wide ranges
 SLEEP_BETWEEN_BATCHES = 0.1
 BACKFILL_START_BLOCK = 11_000_000
 LOG_EVERY_N_BATCHES = 50
+CHECKPOINT_EVERY = 50
 
 UPSERT_SQL = """
 INSERT INTO resolutions (
     condition_id, question_id, settled_at, final_price, settled_outcome
-) VALUES (?, ?, ?, ?, ?)
+)
+SELECT condition_id, question_id, settled_at, final_price, settled_outcome
+FROM _staging_res
 ON CONFLICT (condition_id) DO UPDATE SET
     settled_at = EXCLUDED.settled_at,
     final_price = EXCLUDED.final_price,
@@ -119,15 +123,16 @@ def _interpret_payouts(payouts: list[int]) -> tuple[str, float]:
 
 def get_last_scanned_block(db_path: str) -> int | None:
     """Read last_cursor from indexer_state for resolutions_uma."""
-    con = duckdb.connect(db_path, read_only=True)
-    row = con.execute(
-        "SELECT last_cursor FROM indexer_state "
-        "WHERE indexer_name = 'resolutions_uma'"
-    ).fetchone()
-    con.close()
-    if row and row[0]:
-        return int(row[0])
-    return None
+    from polybot.db.connection import db_read_with_retry
+
+    def _do(con):
+        row = con.execute(
+            "SELECT last_cursor FROM indexer_state "
+            "WHERE indexer_name = 'resolutions_uma'"
+        ).fetchone()
+        return int(row[0]) if row and row[0] else None
+
+    return db_read_with_retry(db_path, _do)
 
 
 def upsert_resolutions(db_path: str, resolutions: list[dict]) -> int:
@@ -136,19 +141,23 @@ def upsert_resolutions(db_path: str, resolutions: list[dict]) -> int:
         return 0
     from polybot.db.connection import db_write_with_retry
 
+    params = [
+        (r["condition_id"], r["question_id"], r.get("settled_at"),
+         r["final_price"], r["settled_outcome"])
+        for r in resolutions
+    ]
+
     def _do(con):
         before = con.execute("SELECT COUNT(*) FROM resolutions").fetchone()[0]
-        for r in resolutions:
-            con.execute(
-                UPSERT_SQL,
-                [
-                    r["condition_id"],
-                    r["question_id"],
-                    r.get("settled_at"),
-                    r["final_price"],
-                    r["settled_outcome"],
-                ],
-            )
+        con.execute("""CREATE OR REPLACE TEMP TABLE _staging_res (
+            condition_id VARCHAR, question_id VARCHAR, settled_at TIMESTAMP,
+            final_price DOUBLE, settled_outcome VARCHAR
+        )""")
+        con.executemany(
+            "INSERT INTO _staging_res VALUES (?, ?, ?, ?, ?)", params
+        )
+        con.execute(UPSERT_SQL)
+        con.execute("DROP TABLE IF EXISTS _staging_res")
         after = con.execute("SELECT COUNT(*) FROM resolutions").fetchone()[0]
         return after - before
 
@@ -230,6 +239,49 @@ def get_block_timestamp(
     return None
 
 
+def get_block_timestamps_batch(
+    client: httpx.Client,
+    url: str,
+    block_numbers: set[int],
+    cache: dict[int, datetime | None],
+) -> dict[int, datetime | None]:
+    """Fetch block timestamps using JSON-RPC batch calls."""
+    to_fetch = sorted(block_numbers - set(cache.keys()))
+    if not to_fetch:
+        return cache
+
+    BATCH_RPC = 50
+    for i in range(0, len(to_fetch), BATCH_RPC):
+        chunk = to_fetch[i : i + BATCH_RPC]
+        batch_req = [
+            {
+                "jsonrpc": "2.0",
+                "method": "eth_getBlockByNumber",
+                "params": [hex(bn), False],
+                "id": idx,
+            }
+            for idx, bn in enumerate(chunk)
+        ]
+        resp = client.post(url, json=batch_req)
+        resp.raise_for_status()
+        results = resp.json()
+        if isinstance(results, list):
+            for item, bn in zip(results, chunk, strict=False):
+                block = item.get("result")
+                if block and "timestamp" in block:
+                    ts = int(block["timestamp"], 16)
+                    cache[bn] = datetime.fromtimestamp(ts, tz=UTC)
+                else:
+                    cache[bn] = None
+        time.sleep(0.1)
+
+    return cache
+
+
+class _GracefulStop(Exception):
+    pass
+
+
 def run(db_path: str, alchemy_url: str) -> int:
     """Main entry. Backfill or incremental scan for ConditionResolution events."""
     last_block = get_last_scanned_block(db_path)
@@ -237,6 +289,14 @@ def run(db_path: str, alchemy_url: str) -> int:
 
     start_time = time.monotonic()
     total_inserted = 0
+    stop_requested = False
+
+    def _handle_sigterm(_signum, _frame):
+        nonlocal stop_requested
+        stop_requested = True
+        logger.info("resolutions_sigterm_received")
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
 
     with httpx.Client(timeout=15.0) as client:
         from polybot.indexers.proxy_factory import get_current_block
@@ -265,13 +325,15 @@ def run(db_path: str, alchemy_url: str) -> int:
             update_indexer_state(db_path, head, "success", 0, duration_ms)
             return 0
 
-        # Cache block timestamps to avoid redundant RPC calls
         block_ts_cache: dict[int, datetime | None] = {}
         batch_num = 0
         batch_start = start_block
 
         try:
             while batch_start <= head:
+                if stop_requested:
+                    raise _GracefulStop("SIGTERM received")
+
                 batch_end = min(batch_start + BATCH_SIZE_BLOCKS - 1, head)
                 batch_num += 1
 
@@ -281,22 +343,25 @@ def run(db_path: str, alchemy_url: str) -> int:
 
                 if events:
                     resolutions = []
+                    batch_blocks: set[int] = set()
                     for event in events:
                         parsed = parse_condition_resolution(event)
                         if not parsed:
                             continue
-
-                        # Get block timestamp (cached)
-                        bn = parsed["block_number"]
-                        if bn not in block_ts_cache:
-                            block_ts_cache[bn] = get_block_timestamp(
-                                client, alchemy_url, bn
-                            )
-                        parsed["settled_at"] = block_ts_cache[bn]
+                        batch_blocks.add(parsed["block_number"])
                         resolutions.append(parsed)
+
+                    if batch_blocks:
+                        get_block_timestamps_batch(
+                            client, alchemy_url, batch_blocks, block_ts_cache
+                        )
+                    for r in resolutions:
+                        r["settled_at"] = block_ts_cache.get(r["block_number"])
 
                     inserted = upsert_resolutions(db_path, resolutions)
                     total_inserted += inserted
+
+                current_block_end = batch_end
 
                 if batch_num % LOG_EVERY_N_BATCHES == 0 or batch_num == 1:
                     pct = batch_num / total_batches * 100
@@ -309,9 +374,29 @@ def run(db_path: str, alchemy_url: str) -> int:
                         resolutions_so_far=total_inserted,
                     )
 
-                current_block_end = batch_end
+                if batch_num % CHECKPOINT_EVERY == 0:
+                    duration_ms = int((time.monotonic() - start_time) * 1000)
+                    update_indexer_state(
+                        db_path, current_block_end, "running",
+                        total_inserted, duration_ms,
+                    )
+
                 batch_start = batch_end + 1
                 time.sleep(SLEEP_BETWEEN_BATCHES)
+
+        except _GracefulStop:
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+            update_indexer_state(
+                db_path, current_block_end, "partial",
+                total_inserted, duration_ms,
+            )
+            logger.info(
+                "resolutions_partial",
+                last_block=current_block_end,
+                resolutions=total_inserted,
+                remaining_batches=total_batches - batch_num,
+            )
+            return total_inserted
 
         except Exception as e:
             duration_ms = int((time.monotonic() - start_time) * 1000)

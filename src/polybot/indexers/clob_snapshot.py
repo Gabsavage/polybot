@@ -133,11 +133,14 @@ async def run_snapshot(settings: Settings, r2: R2Client) -> int:
     now = datetime.now(UTC)
 
     # Load universe from DuckDB
-    con = duckdb.connect(str(settings.DUCKDB_PATH), read_only=True)
-    universe = con.execute(
-        "SELECT condition_id, token_id_yes, token_id_no FROM snapshot_universe"
-    ).fetchall()
-    con.close()
+    from polybot.db.connection import db_read_with_retry
+
+    universe = db_read_with_retry(
+        str(settings.DUCKDB_PATH),
+        lambda con: con.execute(
+            "SELECT condition_id, token_id_yes, token_id_no FROM snapshot_universe"
+        ).fetchall(),
+    )
 
     if not universe:
         logger.warning("snapshot_universe is empty — run refresh_snapshot_universe first")

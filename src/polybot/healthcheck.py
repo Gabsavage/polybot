@@ -14,9 +14,12 @@ logger = structlog.get_logger()
 def check_duckdb(settings: Settings) -> tuple[bool, str]:
     """Check DuckDB is accessible and has expected tables."""
     try:
-        con = duckdb.connect(str(settings.DUCKDB_PATH), read_only=True)
-        tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
-        con.close()
+        from polybot.db.connection import db_read_with_retry
+
+        tables = db_read_with_retry(
+            str(settings.DUCKDB_PATH),
+            lambda con: [r[0] for r in con.execute("SHOW TABLES").fetchall()],
+        )
         if "markets" not in tables:
             return False, f"Missing expected tables. Found: {tables}"
         return True, f"{len(tables)} tables OK"

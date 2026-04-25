@@ -38,6 +38,38 @@ def connect(db_path: str, read_only: bool = False) -> duckdb.DuckDBPyConnection:
     raise duckdb.IOException("Failed to connect after retries")
 
 
+def db_read_with_retry(
+    db_path: str,
+    callback: Callable[[duckdb.DuckDBPyConnection], T],
+    max_retries: int = 5,
+    base_delay: float = 1.0,
+) -> T:
+    """Open a read-only connection, run callback, close. Retry on lock conflicts."""
+    for attempt in range(max_retries):
+        con = None
+        try:
+            con = duckdb.connect(db_path, read_only=True)
+            result = callback(con)
+            return result
+        except duckdb.IOException:
+            if attempt == max_retries - 1:
+                raise
+            delay = base_delay * 2**attempt
+            logger.warning(
+                "duckdb_read_retry",
+                attempt=attempt + 1,
+                delay=delay,
+            )
+            time.sleep(delay)
+        finally:
+            if con:
+                try:
+                    con.close()
+                except Exception:
+                    pass
+    raise duckdb.IOException("Failed to read after retries")
+
+
 def db_write_with_retry(
     db_path: str,
     callback: Callable[[duckdb.DuckDBPyConnection], T],

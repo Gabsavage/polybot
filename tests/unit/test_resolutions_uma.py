@@ -256,6 +256,22 @@ class TestRunIntegration:
 
         def mock_post(url, **kwargs):
             body = kwargs.get("json", {})
+            # Handle batch RPC requests (list of calls)
+            if isinstance(body, list):
+                batch_results = []
+                for req in body:
+                    m = req.get("method", "")
+                    resps = responses_map.get(m, [])
+                    resp_data = (
+                        resps.pop(0)
+                        if resps
+                        else {"jsonrpc": "2.0", "result": None, "id": req.get("id", 1)}
+                    )
+                    resp_data["id"] = req.get("id", 1)
+                    batch_results.append(resp_data)
+                return httpx.Response(
+                    200, json=batch_results, request=httpx.Request("POST", url)
+                )
             method = body.get("method", "")
             resps = responses_map.get(method, [])
             resp_data = (

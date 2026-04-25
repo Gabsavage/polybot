@@ -286,6 +286,26 @@ class TestRunIntegration:
 
         def mock_post(url, **kwargs):
             body = kwargs.get("json", {})
+            # Handle batch RPC requests (list of calls)
+            if isinstance(body, list):
+                batch_results = []
+                for req in body:
+                    m = req.get("method", "")
+                    call_log.append(m)
+                    if m == "eth_getBlockByNumber":
+                        batch_results.append({
+                            "jsonrpc": "2.0",
+                            "result": {"timestamp": hex(1700000000)},
+                            "id": req.get("id", 1),
+                        })
+                    else:
+                        batch_results.append({
+                            "jsonrpc": "2.0", "result": [], "id": req.get("id", 1),
+                        })
+                return httpx.Response(
+                    200, json=batch_results,
+                    request=httpx.Request("POST", url),
+                )
             method = body.get("method", "")
             call_log.append(method)
             if method == "eth_blockNumber":
@@ -294,7 +314,6 @@ class TestRunIntegration:
                     request=httpx.Request("POST", url),
                 )
             if method == "eth_getLogs":
-                # First call returns events, subsequent empty
                 resp = logs_resp if call_log.count("eth_getLogs") == 1 else logs_empty
                 return httpx.Response(
                     200, json=resp,

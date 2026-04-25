@@ -7,5 +7,6 @@ Type=oneshot
 WorkingDirectory=/root/polybot
 ExecStart=/root/.local/bin/uv run --directory /root/polybot python -m polybot.indexers.markets_gamma
 Environment=PYTHONPATH=/root/polybot/src
+Environment=PYTHONUNBUFFERED=1
 StandardOutput=append:/var/log/polybot/markets-gamma.log
 StandardError=append:/var/log/polybot/markets-gamma.log

@@ -7,6 +7,7 @@ Type=oneshot
 User=root
 WorkingDirectory=/root/polybot
 Environment=PYTHONPATH=/root/polybot/src
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/root/polybot/.venv/bin/python -m polybot.indexers.resolutions_uma
 StandardOutput=journal
 StandardError=journal

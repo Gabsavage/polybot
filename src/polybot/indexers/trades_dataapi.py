@@ -31,13 +31,16 @@ ON CONFLICT (transaction_hash) DO NOTHING
 
 def get_tracked_wallets(db_path: str) -> list[dict]:
     """Read active Tier A wallets from tracked_wallets table."""
-    con = duckdb.connect(db_path, read_only=True)
-    rows = con.execute(
-        "SELECT address, last_seen_timestamp FROM tracked_wallets "
-        "WHERE tier = 'A' AND active = true"
-    ).fetchall()
-    con.close()
-    return [{"address": r[0], "last_seen_timestamp": r[1] or 0} for r in rows]
+    from polybot.db.connection import db_read_with_retry
+
+    def _do(con):
+        rows = con.execute(
+            "SELECT address, last_seen_timestamp FROM tracked_wallets "
+            "WHERE tier = 'A' AND active = true"
+        ).fetchall()
+        return [{"address": r[0], "last_seen_timestamp": r[1] or 0} for r in rows]
+
+    return db_read_with_retry(db_path, _do)
 
 
 def filter_new_trades(trades: list[dict], last_seen_ts: int) -> list[dict]:

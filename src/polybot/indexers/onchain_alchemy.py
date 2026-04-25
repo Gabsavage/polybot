@@ -1,5 +1,6 @@
 """Indexer on-chain trades via Alchemy RPC OrderFilled events — hourly polling."""
 
+import signal
 import time
 from datetime import UTC, datetime
 
@@ -40,13 +41,18 @@ SLEEP_BETWEEN_BATCHES = 0.2
 INITIAL_LOOKBACK = 5_000  # ~2.5h for initial scan, incremental extends
 REQUEST_TIMEOUT = 30.0
 LOG_EVERY_N_BATCHES = 25
+CHECKPOINT_EVERY = 25  # save progress to DB every N batches for resumability
 
 INSERT_SQL = """
 INSERT INTO trades_all (
     tx_hash_log_idx, transaction_hash, log_index,
     proxy_wallet, condition_id, side, size_usd, price,
     timestamp_ts, source
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'alchemy')
+)
+SELECT tx_hash_log_idx, transaction_hash, log_index,
+       proxy_wallet, condition_id, side, size_usd, price,
+       timestamp_ts, 'alchemy'
+FROM _staging_trades
 ON CONFLICT (tx_hash_log_idx) DO NOTHING
 """
 
@@ -126,15 +132,16 @@ def parse_order_filled(event: dict) -> dict | None:
 
 def get_last_scanned_block(db_path: str) -> int | None:
     """Read last_cursor from indexer_state for onchain_alchemy."""
-    con = duckdb.connect(db_path, read_only=True)
-    row = con.execute(
-        "SELECT last_cursor FROM indexer_state "
-        "WHERE indexer_name = 'onchain_alchemy'"
-    ).fetchone()
-    con.close()
-    if row and row[0]:
-        return int(row[0])
-    return None
+    from polybot.db.connection import db_read_with_retry
+
+    def _do(con):
+        row = con.execute(
+            "SELECT last_cursor FROM indexer_state "
+            "WHERE indexer_name = 'onchain_alchemy'"
+        ).fetchone()
+        return int(row[0]) if row and row[0] else None
+
+    return db_read_with_retry(db_path, _do)
 
 
 def insert_trades(db_path: str, trades: list[dict]) -> int:
@@ -143,23 +150,34 @@ def insert_trades(db_path: str, trades: list[dict]) -> int:
         return 0
     from polybot.db.connection import db_write_with_retry
 
+    params = [
+        (
+            t["tx_hash_log_idx"],
+            t["transaction_hash"],
+            t["log_index"],
+            t["proxy_wallet"],
+            t["condition_id"],
+            t["side"],
+            t["size_usd"],
+            t["price"],
+            t.get("timestamp_ts"),
+        )
+        for t in trades
+    ]
+
     def _do(con):
         before = con.execute("SELECT COUNT(*) FROM trades_all").fetchone()[0]
-        for t in trades:
-            con.execute(
-                INSERT_SQL,
-                [
-                    t["tx_hash_log_idx"],
-                    t["transaction_hash"],
-                    t["log_index"],
-                    t["proxy_wallet"],
-                    t["condition_id"],
-                    t["side"],
-                    t["size_usd"],
-                    t["price"],
-                    t.get("timestamp_ts"),
-                ],
-            )
+        con.execute("""CREATE OR REPLACE TEMP TABLE _staging_trades (
+            tx_hash_log_idx VARCHAR, transaction_hash VARCHAR, log_index INTEGER,
+            proxy_wallet VARCHAR, condition_id VARCHAR, side VARCHAR,
+            size_usd DOUBLE, price DOUBLE, timestamp_ts TIMESTAMP
+        )""")
+        con.executemany(
+            "INSERT INTO _staging_trades VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params,
+        )
+        con.execute(INSERT_SQL)
+        con.execute("DROP TABLE IF EXISTS _staging_trades")
         after = con.execute("SELECT COUNT(*) FROM trades_all").fetchone()[0]
         return after - before
 
@@ -243,20 +261,42 @@ def get_block_timestamps(
     block_numbers: set[int],
     cache: dict[int, datetime],
 ) -> dict[int, datetime]:
-    """Fetch block timestamps for blocks not yet cached."""
-    to_fetch = block_numbers - set(cache.keys())
-    for bn in to_fetch:
-        result = rpc_call(
-            client, url, "eth_getBlockByNumber", [hex(bn), False]
-        )
-        block = result.get("result")
-        if block and "timestamp" in block:
-            ts = int(block["timestamp"], 16)
-            cache[bn] = datetime.fromtimestamp(ts, tz=UTC)
+    """Fetch block timestamps using JSON-RPC batch calls."""
+    to_fetch = sorted(block_numbers - set(cache.keys()))
+    if not to_fetch:
+        return cache
+
+    BATCH_RPC = 50
+    for i in range(0, len(to_fetch), BATCH_RPC):
+        chunk = to_fetch[i : i + BATCH_RPC]
+        batch_req = [
+            {
+                "jsonrpc": "2.0",
+                "method": "eth_getBlockByNumber",
+                "params": [hex(bn), False],
+                "id": idx,
+            }
+            for idx, bn in enumerate(chunk)
+        ]
+        resp = client.post(url, json=batch_req)
+        resp.raise_for_status()
+        results = resp.json()
+        if isinstance(results, list):
+            for item, bn in zip(results, chunk, strict=False):
+                block = item.get("result")
+                if block and "timestamp" in block:
+                    ts = int(block["timestamp"], 16)
+                    cache[bn] = datetime.fromtimestamp(ts, tz=UTC)
+        time.sleep(0.1)
+
     return cache
 
 
 # --- Main run ---
+
+
+class _GracefulStop(Exception):
+    pass
 
 
 def run(db_path: str, alchemy_url: str) -> int:
@@ -266,6 +306,14 @@ def run(db_path: str, alchemy_url: str) -> int:
 
     start_time = time.monotonic()
     total_inserted = 0
+    stop_requested = False
+
+    def _handle_sigterm(_signum, _frame):
+        nonlocal stop_requested
+        stop_requested = True
+        logger.info("onchain_sigterm_received")
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
 
     with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
         head = get_current_block(client, alchemy_url)
@@ -298,6 +346,9 @@ def run(db_path: str, alchemy_url: str) -> int:
 
         try:
             while batch_start <= head:
+                if stop_requested:
+                    raise _GracefulStop("SIGTERM received")
+
                 batch_end = min(batch_start + BATCH_SIZE_BLOCKS - 1, head)
                 batch_num += 1
 
@@ -315,7 +366,6 @@ def run(db_path: str, alchemy_url: str) -> int:
                             batch_trades.append(parsed)
                             batch_blocks.add(parsed["block_number"])
 
-                # Fetch timestamps for all blocks in this batch
                 if batch_blocks:
                     get_block_timestamps(
                         client, alchemy_url, batch_blocks, block_ts_cache
@@ -329,6 +379,8 @@ def run(db_path: str, alchemy_url: str) -> int:
                     inserted = insert_trades(db_path, batch_trades)
                     total_inserted += inserted
 
+                current_block_end = batch_end
+
                 if batch_num % LOG_EVERY_N_BATCHES == 0 or batch_num == 1:
                     pct = batch_num / total_batches * 100
                     logger.info(
@@ -340,9 +392,30 @@ def run(db_path: str, alchemy_url: str) -> int:
                         trades_so_far=total_inserted,
                     )
 
-                current_block_end = batch_end
+                # Checkpoint progress for resumability
+                if batch_num % CHECKPOINT_EVERY == 0:
+                    duration_ms = int((time.monotonic() - start_time) * 1000)
+                    update_indexer_state(
+                        db_path, current_block_end, "running",
+                        total_inserted, duration_ms,
+                    )
+
                 batch_start = batch_end + 1
                 time.sleep(SLEEP_BETWEEN_BATCHES)
+
+        except _GracefulStop:
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+            update_indexer_state(
+                db_path, current_block_end, "partial",
+                total_inserted, duration_ms,
+            )
+            logger.info(
+                "onchain_alchemy_partial",
+                last_block=current_block_end,
+                trades=total_inserted,
+                remaining_batches=total_batches - batch_num,
+            )
+            return total_inserted
 
         except Exception as e:
             duration_ms = int((time.monotonic() - start_time) * 1000)
