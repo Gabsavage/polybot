@@ -191,18 +191,23 @@ def upsert_markets(db_path: str, markets: list[dict]) -> int:
 
     staging_data = pa.table(cols_data)  # noqa: F841 (referenced by DuckDB SQL)
 
+    from polybot.db.connection import db_write_with_retry
+
     upsert_start = time.monotonic()
-    con = duckdb.connect(db_path)
-    con.execute(
-        "CREATE OR REPLACE TEMP TABLE _staging AS SELECT * FROM staging_data"
-    )
-    cols_str = ", ".join(COLUMNS)
-    con.execute(
-        f"INSERT OR REPLACE INTO markets ({cols_str}) "
-        f"SELECT {cols_str} FROM _staging"
-    )
-    con.execute("DROP TABLE IF EXISTS _staging")
-    con.close()
+
+    def _do(con):
+        con.register("staging_data", staging_data)
+        con.execute(
+            "CREATE OR REPLACE TEMP TABLE _staging AS SELECT * FROM staging_data"
+        )
+        cols_str = ", ".join(COLUMNS)
+        con.execute(
+            f"INSERT OR REPLACE INTO markets ({cols_str}) "
+            f"SELECT {cols_str} FROM _staging"
+        )
+        con.execute("DROP TABLE IF EXISTS _staging")
+
+    db_write_with_retry(db_path, _do)
     upsert_ms = int((time.monotonic() - upsert_start) * 1000)
     logger.info("upsert_complete", count=len(rows), upsert_ms=upsert_ms)
 
@@ -217,17 +222,20 @@ def update_indexer_state(
     error: str | None = None,
 ) -> None:
     """Update indexer_state table for 'markets_gamma'."""
-    con = duckdb.connect(db_path)
-    con.execute(
-        """
-        INSERT OR REPLACE INTO indexer_state (
-            indexer_name, last_synced_at, last_run_status,
-            last_run_duration_ms, ingested_count, last_error, updated_at
-        ) VALUES ('markets_gamma', NOW(), ?, ?, ?, ?, NOW())
-        """,
-        [status, duration_ms, count, error],
-    )
-    con.close()
+    from polybot.db.connection import db_write_with_retry
+
+    def _do(con):
+        con.execute(
+            """
+            INSERT OR REPLACE INTO indexer_state (
+                indexer_name, last_synced_at, last_run_status,
+                last_run_duration_ms, ingested_count, last_error, updated_at
+            ) VALUES ('markets_gamma', NOW(), ?, ?, ?, ?, NOW())
+            """,
+            [status, duration_ms, count, error],
+        )
+
+    db_write_with_retry(db_path, _do)
 
 
 def run(db_path: str) -> int:

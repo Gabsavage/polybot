@@ -9,7 +9,7 @@ import structlog
 
 from polybot.components.sizing import compute_size
 from polybot.config import Settings
-from polybot.db.connection import connect as db_connect
+from polybot.db.connection import connect as db_connect, db_write_with_retry
 from polybot.telegram.bot import PolyBot
 
 logger = structlog.get_logger()
@@ -273,32 +273,34 @@ class SharpMoneyDetector:
         tier_label = "A1" if tier_a_conf >= 0.90 else "A2"
 
         # Insert alert into DB first to get alert_id
-        con = db_connect(self.db_path)
-        alert_id = _next_alert_id(con)
-        con.execute(
-            """
-            INSERT INTO alerts (
-                alert_id, component, emitted_at, trade_hash,
-                wallet_address, condition_id, side, size_usd, price,
-                size_suggested_usd, resolution_risk_score,
-                tags, shadow_mode, dedup_hash
-            ) VALUES (?, 'C1', CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)
-            """,
-            [
-                alert_id,
-                trade["transaction_hash"],
-                wallet,
-                condition_id,
-                trade["side"],
-                size_usd,
-                float(trade["price"]),
-                size_suggested,
-                risk_score,
-                ",".join(tags) if tags else None,
-                dhash,
-            ],
-        )
-        con.close()
+        def _insert_alert(con):
+            aid = _next_alert_id(con)
+            con.execute(
+                """
+                INSERT INTO alerts (
+                    alert_id, component, emitted_at, trade_hash,
+                    wallet_address, condition_id, side, size_usd, price,
+                    size_suggested_usd, resolution_risk_score,
+                    tags, shadow_mode, dedup_hash
+                ) VALUES (?, 'C1', CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)
+                """,
+                [
+                    aid,
+                    trade["transaction_hash"],
+                    wallet,
+                    condition_id,
+                    trade["side"],
+                    size_usd,
+                    float(trade["price"]),
+                    size_suggested,
+                    risk_score,
+                    ",".join(tags) if tags else None,
+                    dhash,
+                ],
+            )
+            return aid
+
+        alert_id = db_write_with_retry(self.db_path, _insert_alert)
 
         # Format alert + inline keyboard
         message = _format_alert(
@@ -331,12 +333,13 @@ class SharpMoneyDetector:
             await self.bot.send_alert("risk", message)
 
         if msg_id:
-            con = db_connect(self.db_path)
-            con.execute(
-                "UPDATE alerts SET telegram_message_id = ? WHERE alert_id = ?",
-                [msg_id, alert_id],
+            db_write_with_retry(
+                self.db_path,
+                lambda con: con.execute(
+                    "UPDATE alerts SET telegram_message_id = ? WHERE alert_id = ?",
+                    [msg_id, alert_id],
+                ),
             )
-            con.close()
 
         logger.info(
             "c1_alert_emitted",

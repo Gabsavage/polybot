@@ -141,26 +141,29 @@ def insert_trades(db_path: str, trades: list[dict]) -> int:
     """Insert trades into trades_all. Returns count of new rows."""
     if not trades:
         return 0
-    con = duckdb.connect(db_path)
-    before = con.execute("SELECT COUNT(*) FROM trades_all").fetchone()[0]
-    for t in trades:
-        con.execute(
-            INSERT_SQL,
-            [
-                t["tx_hash_log_idx"],
-                t["transaction_hash"],
-                t["log_index"],
-                t["proxy_wallet"],
-                t["condition_id"],
-                t["side"],
-                t["size_usd"],
-                t["price"],
-                t.get("timestamp_ts"),
-            ],
-        )
-    after = con.execute("SELECT COUNT(*) FROM trades_all").fetchone()[0]
-    con.close()
-    return after - before
+    from polybot.db.connection import db_write_with_retry
+
+    def _do(con):
+        before = con.execute("SELECT COUNT(*) FROM trades_all").fetchone()[0]
+        for t in trades:
+            con.execute(
+                INSERT_SQL,
+                [
+                    t["tx_hash_log_idx"],
+                    t["transaction_hash"],
+                    t["log_index"],
+                    t["proxy_wallet"],
+                    t["condition_id"],
+                    t["side"],
+                    t["size_usd"],
+                    t["price"],
+                    t.get("timestamp_ts"),
+                ],
+            )
+        after = con.execute("SELECT COUNT(*) FROM trades_all").fetchone()[0]
+        return after - before
+
+    return db_write_with_retry(db_path, _do)
 
 
 def update_indexer_state(
@@ -172,18 +175,21 @@ def update_indexer_state(
     error: str | None = None,
 ) -> None:
     """Update indexer_state for 'onchain_alchemy'."""
-    con = duckdb.connect(db_path)
-    con.execute(
-        """
-        INSERT OR REPLACE INTO indexer_state (
-            indexer_name, last_synced_at, last_block_number, last_cursor,
-            last_run_status, last_run_duration_ms, ingested_count,
-            last_error, updated_at
-        ) VALUES ('onchain_alchemy', NOW(), ?, ?, ?, ?, ?, ?, NOW())
-        """,
-        [last_block, str(last_block), status, duration_ms, count, error],
-    )
-    con.close()
+    from polybot.db.connection import db_write_with_retry
+
+    def _do(con):
+        con.execute(
+            """
+            INSERT OR REPLACE INTO indexer_state (
+                indexer_name, last_synced_at, last_block_number, last_cursor,
+                last_run_status, last_run_duration_ms, ingested_count,
+                last_error, updated_at
+            ) VALUES ('onchain_alchemy', NOW(), ?, ?, ?, ?, ?, ?, NOW())
+            """,
+            [last_block, str(last_block), status, duration_ms, count, error],
+        )
+
+    db_write_with_retry(db_path, _do)
 
 
 # --- Fetch logic ---

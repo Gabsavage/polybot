@@ -13,7 +13,7 @@ from telegram.ext import (
 )
 
 from polybot.config import Settings
-from polybot.db.connection import connect as db_connect
+from polybot.db.connection import connect as db_connect, db_write_with_retry
 
 logger = structlog.get_logger()
 
@@ -90,12 +90,13 @@ class PolyBot:
 
         # Update alignment_score in DB: copied=+1, skip=-1
         score = 1 if action == "copied" else -1
-        con = db_connect(self.db_path)
-        con.execute(
-            "UPDATE alerts SET alignment_score = ? WHERE alert_id = ?",
-            [score, alert_id],
+        db_write_with_retry(
+            self.db_path,
+            lambda con: con.execute(
+                "UPDATE alerts SET alignment_score = ? WHERE alert_id = ?",
+                [score, alert_id],
+            ),
         )
-        con.close()
 
         # Update button text to show selection
         label = "✅ Copié" if action == "copied" else "⏭️ Skip"
@@ -179,13 +180,14 @@ class PolyBot:
                 await update.message.reply_text("Usage: /bankroll set <montant>")
                 return
 
-            con = db_connect(self.db_path)
-            con.execute(
-                "INSERT OR REPLACE INTO bankroll_state (id, amount, updated_at) "
-                "VALUES (1, ?, CURRENT_TIMESTAMP)",
-                [amount],
+            db_write_with_retry(
+                self.db_path,
+                lambda con: con.execute(
+                    "INSERT OR REPLACE INTO bankroll_state (id, amount, updated_at) "
+                    "VALUES (1, ?, CURRENT_TIMESTAMP)",
+                    [amount],
+                ),
             )
-            con.close()
             await update.message.reply_text(f"Bankroll mis à jour : ${amount:,.2f}")
             return
 

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import anthropic
 import structlog
 
-from polybot.db.connection import connect as db_connect
+from polybot.db.connection import connect as db_connect, db_write_with_retry
 
 logger = structlog.get_logger()
 
@@ -153,23 +153,24 @@ class ResolutionRiskScorer:
         self, condition_id: str, result: dict
     ) -> None:
         """Store LLM result in resolution_risk_cache."""
-        con = db_connect(self.db_path)
-        con.execute(
-            """
-            INSERT OR REPLACE INTO resolution_risk_cache
-                (condition_id, llm_score, llm_reasons, llm_red_flags,
-                 llm_model_version, computed_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """,
-            [
-                condition_id,
-                result["ambiguity_score"],
-                result["reasons"],
-                result["red_flags"],
-                HAIKU_MODEL,
-            ],
+        db_write_with_retry(
+            self.db_path,
+            lambda con: con.execute(
+                """
+                INSERT OR REPLACE INTO resolution_risk_cache
+                    (condition_id, llm_score, llm_reasons, llm_red_flags,
+                     llm_model_version, computed_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                [
+                    condition_id,
+                    result["ambiguity_score"],
+                    result["reasons"],
+                    result["red_flags"],
+                    HAIKU_MODEL,
+                ],
+            ),
         )
-        con.close()
 
     def compute_rules_score(
         self, category: str | None, end_date: datetime | None

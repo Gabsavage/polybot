@@ -134,22 +134,25 @@ def upsert_resolutions(db_path: str, resolutions: list[dict]) -> int:
     """Upsert resolutions into DB. Returns count of new/updated rows."""
     if not resolutions:
         return 0
-    con = duckdb.connect(db_path)
-    before = con.execute("SELECT COUNT(*) FROM resolutions").fetchone()[0]
-    for r in resolutions:
-        con.execute(
-            UPSERT_SQL,
-            [
-                r["condition_id"],
-                r["question_id"],
-                r.get("settled_at"),
-                r["final_price"],
-                r["settled_outcome"],
-            ],
-        )
-    after = con.execute("SELECT COUNT(*) FROM resolutions").fetchone()[0]
-    con.close()
-    return after - before
+    from polybot.db.connection import db_write_with_retry
+
+    def _do(con):
+        before = con.execute("SELECT COUNT(*) FROM resolutions").fetchone()[0]
+        for r in resolutions:
+            con.execute(
+                UPSERT_SQL,
+                [
+                    r["condition_id"],
+                    r["question_id"],
+                    r.get("settled_at"),
+                    r["final_price"],
+                    r["settled_outcome"],
+                ],
+            )
+        after = con.execute("SELECT COUNT(*) FROM resolutions").fetchone()[0]
+        return after - before
+
+    return db_write_with_retry(db_path, _do)
 
 
 def update_indexer_state(
@@ -161,18 +164,21 @@ def update_indexer_state(
     error: str | None = None,
 ) -> None:
     """Update indexer_state for 'resolutions_uma'."""
-    con = duckdb.connect(db_path)
-    con.execute(
-        """
-        INSERT OR REPLACE INTO indexer_state (
-            indexer_name, last_synced_at, last_block_number, last_cursor,
-            last_run_status, last_run_duration_ms, ingested_count,
-            last_error, updated_at
-        ) VALUES ('resolutions_uma', NOW(), ?, ?, ?, ?, ?, ?, NOW())
-        """,
-        [last_block, str(last_block), status, duration_ms, count, error],
-    )
-    con.close()
+    from polybot.db.connection import db_write_with_retry
+
+    def _do(con):
+        con.execute(
+            """
+            INSERT OR REPLACE INTO indexer_state (
+                indexer_name, last_synced_at, last_block_number, last_cursor,
+                last_run_status, last_run_duration_ms, ingested_count,
+                last_error, updated_at
+            ) VALUES ('resolutions_uma', NOW(), ?, ?, ?, ?, ?, ?, NOW())
+            """,
+            [last_block, str(last_block), status, duration_ms, count, error],
+        )
+
+    db_write_with_retry(db_path, _do)
 
 
 # --- Scan logic ---

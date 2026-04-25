@@ -72,26 +72,32 @@ def insert_trades(db_path: str, trades: list[dict]) -> int:
     Returns count of actually inserted trades."""
     if not trades:
         return 0
-    con = duckdb.connect(db_path)
-    before = con.execute("SELECT COUNT(*) FROM trades").fetchone()[0]
-    for t in trades:
-        try:
-            con.execute(INSERT_SQL, list(map_trade(t)))
-        except Exception:
-            logger.warning("insert_failed", tx_hash=t.get("transactionHash"))
-    after = con.execute("SELECT COUNT(*) FROM trades").fetchone()[0]
-    con.close()
-    return after - before
+    from polybot.db.connection import db_write_with_retry
+
+    def _do(con):
+        before = con.execute("SELECT COUNT(*) FROM trades").fetchone()[0]
+        for t in trades:
+            try:
+                con.execute(INSERT_SQL, list(map_trade(t)))
+            except Exception:
+                logger.warning("insert_failed", tx_hash=t.get("transactionHash"))
+        after = con.execute("SELECT COUNT(*) FROM trades").fetchone()[0]
+        return after - before
+
+    return db_write_with_retry(db_path, _do)
 
 
 def update_wallet_cursor(db_path: str, address: str, new_timestamp: int) -> None:
     """Update last_seen_timestamp for a wallet."""
-    con = duckdb.connect(db_path)
-    con.execute(
-        "UPDATE tracked_wallets SET last_seen_timestamp = ? WHERE address = ?",
-        [new_timestamp, address],
-    )
-    con.close()
+    from polybot.db.connection import db_write_with_retry
+
+    def _do(con):
+        con.execute(
+            "UPDATE tracked_wallets SET last_seen_timestamp = ? WHERE address = ?",
+            [new_timestamp, address],
+        )
+
+    db_write_with_retry(db_path, _do)
 
 
 def update_indexer_state(
@@ -102,17 +108,20 @@ def update_indexer_state(
     error: str | None = None,
 ) -> None:
     """Update indexer_state for 'trades_dataapi'."""
-    con = duckdb.connect(db_path)
-    con.execute(
-        """
-        INSERT OR REPLACE INTO indexer_state (
-            indexer_name, last_synced_at, last_run_status,
-            last_run_duration_ms, ingested_count, last_error, updated_at
-        ) VALUES ('trades_dataapi', NOW(), ?, ?, ?, ?, NOW())
-        """,
-        [status, duration_ms, count, error],
-    )
-    con.close()
+    from polybot.db.connection import db_write_with_retry
+
+    def _do(con):
+        con.execute(
+            """
+            INSERT OR REPLACE INTO indexer_state (
+                indexer_name, last_synced_at, last_run_status,
+                last_run_duration_ms, ingested_count, last_error, updated_at
+            ) VALUES ('trades_dataapi', NOW(), ?, ?, ?, ?, NOW())
+            """,
+            [status, duration_ms, count, error],
+        )
+
+    db_write_with_retry(db_path, _do)
 
 
 async def fetch_wallet_trades(

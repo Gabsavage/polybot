@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import structlog
 
 from polybot.config import Settings
-from polybot.db.connection import connect as db_connect
+from polybot.db.connection import connect as db_connect, db_write_with_retry
 
 logger = structlog.get_logger()
 
@@ -436,33 +436,34 @@ class InformedTradingDetector:
         risk_score: float = 0.3,
     ) -> str:
         """Insert C2 alert into alerts table. Returns alert_id."""
-        con = db_connect(self.db_path)
-        alert_id = _next_alert_id(con)
-        con.execute(
-            """
-            INSERT INTO alerts (
-                alert_id, component, emitted_at,
-                condition_id, price, size_usd,
-                score, features_passed,
-                alignment_score, momentum_4h,
-                resolution_risk_score,
-                shadow_mode
-            ) VALUES (?, 'C2', CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)
-            """,
-            [
-                alert_id,
-                condition_id,
-                float(market.get("price_now") or 0),
-                float(market.get("vol_1h") or 0),
-                result["score"],
-                ",".join(result["features_passed"]),
-                alignment.get("alignment_score"),
-                alignment.get("momentum_4h"),
-                risk_score,
-            ],
-        )
-        con.close()
-        return alert_id
+        def _do(con):
+            aid = _next_alert_id(con)
+            con.execute(
+                """
+                INSERT INTO alerts (
+                    alert_id, component, emitted_at,
+                    condition_id, price, size_usd,
+                    score, features_passed,
+                    alignment_score, momentum_4h,
+                    resolution_risk_score,
+                    shadow_mode
+                ) VALUES (?, 'C2', CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)
+                """,
+                [
+                    aid,
+                    condition_id,
+                    float(market.get("price_now") or 0),
+                    float(market.get("vol_1h") or 0),
+                    result["score"],
+                    ",".join(result["features_passed"]),
+                    alignment.get("alignment_score"),
+                    alignment.get("momentum_4h"),
+                    risk_score,
+                ],
+            )
+            return aid
+
+        return db_write_with_retry(self.db_path, _do)
 
     # --- Alert formatting ---
 
@@ -675,12 +676,13 @@ class InformedTradingDetector:
         msg_id = await self.bot.send_alert(topic, message, reply_markup=keyboard)
 
         if msg_id:
-            con = db_connect(self.db_path)
-            con.execute(
-                "UPDATE alerts SET telegram_message_id = ? WHERE alert_id = ?",
-                [msg_id, alert["alert_id"]],
+            db_write_with_retry(
+                self.db_path,
+                lambda con: con.execute(
+                    "UPDATE alerts SET telegram_message_id = ? WHERE alert_id = ?",
+                    [msg_id, alert["alert_id"]],
+                ),
             )
-            con.close()
 
     async def run_forever(self) -> None:
         """Main loop: scan every 5 min."""

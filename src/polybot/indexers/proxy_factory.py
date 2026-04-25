@@ -185,20 +185,23 @@ def upsert_mapping(
     method: str,
 ) -> None:
     """Insert or update a proxy→EOA mapping."""
-    con = duckdb.connect(db_path)
-    con.execute(
-        """
-        INSERT INTO proxy_eoa_map
-            (proxy_address, eoa_address, confidence, method)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT (proxy_address) DO UPDATE SET
-            eoa_address = EXCLUDED.eoa_address,
-            confidence = EXCLUDED.confidence,
-            method = EXCLUDED.method
-        """,
-        [proxy.lower(), eoa, confidence, method],
-    )
-    con.close()
+    from polybot.db.connection import db_write_with_retry
+
+    def _do(con):
+        con.execute(
+            """
+            INSERT INTO proxy_eoa_map
+                (proxy_address, eoa_address, confidence, method)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (proxy_address) DO UPDATE SET
+                eoa_address = EXCLUDED.eoa_address,
+                confidence = EXCLUDED.confidence,
+                method = EXCLUDED.method
+            """,
+            [proxy.lower(), eoa, confidence, method],
+        )
+
+    db_write_with_retry(db_path, _do)
 
 
 def update_indexer_state(
@@ -209,17 +212,20 @@ def update_indexer_state(
     error: str | None = None,
 ) -> None:
     """Update indexer_state for 'proxy_factory'."""
-    con = duckdb.connect(db_path)
-    con.execute(
-        """
-        INSERT OR REPLACE INTO indexer_state (
-            indexer_name, last_synced_at, last_run_status,
-            last_run_duration_ms, ingested_count, last_error, updated_at
-        ) VALUES ('proxy_factory', NOW(), ?, ?, ?, ?, NOW())
-        """,
-        [status, duration_ms, count, error],
-    )
-    con.close()
+    from polybot.db.connection import db_write_with_retry
+
+    def _do(con):
+        con.execute(
+            """
+            INSERT OR REPLACE INTO indexer_state (
+                indexer_name, last_synced_at, last_run_status,
+                last_run_duration_ms, ingested_count, last_error, updated_at
+            ) VALUES ('proxy_factory', NOW(), ?, ?, ?, ?, NOW())
+            """,
+            [status, duration_ms, count, error],
+        )
+
+    db_write_with_retry(db_path, _do)
 
 
 # --- Main run ---

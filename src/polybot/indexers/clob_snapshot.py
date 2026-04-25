@@ -196,30 +196,32 @@ async def refresh_snapshot_universe(settings: Settings) -> int:
         logger.warning("no markets passed volume filter")
         return 0
 
+    from polybot.db.connection import db_write_with_retry
+
     now = datetime.now(UTC)
-    con = duckdb.connect(str(settings.DUCKDB_PATH))
 
-    con.execute("DELETE FROM snapshot_universe")
-    for m in selected:
-        clob_token_ids = json.loads(m.get("clobTokenIds", "[]"))
-        if len(clob_token_ids) < 2:
-            continue
-        cols = "condition_id, token_id_yes, token_id_no"
-        cols += ", question_text, volume_24h_usd, refreshed_at"
-        con.execute(
-            f"INSERT INTO snapshot_universe ({cols}) VALUES (?, ?, ?, ?, ?, ?)",
-            [
-                m["conditionId"],
-                clob_token_ids[0],
-                clob_token_ids[1],
-                m.get("question", ""),
-                m.get("volume24hr", 0),
-                now,
-            ],
-        )
+    def _do(con):
+        con.execute("DELETE FROM snapshot_universe")
+        for m in selected:
+            clob_token_ids = json.loads(m.get("clobTokenIds", "[]"))
+            if len(clob_token_ids) < 2:
+                continue
+            cols = "condition_id, token_id_yes, token_id_no"
+            cols += ", question_text, volume_24h_usd, refreshed_at"
+            con.execute(
+                f"INSERT INTO snapshot_universe ({cols}) VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    m["conditionId"],
+                    clob_token_ids[0],
+                    clob_token_ids[1],
+                    m.get("question", ""),
+                    m.get("volume24hr", 0),
+                    now,
+                ],
+            )
+        return con.execute("SELECT COUNT(*) FROM snapshot_universe").fetchone()[0]
 
-    count = con.execute("SELECT COUNT(*) FROM snapshot_universe").fetchone()[0]
-    con.close()
+    count = db_write_with_retry(str(settings.DUCKDB_PATH), _do)
 
     logger.info("snapshot_universe refreshed", count=count)
     return count
