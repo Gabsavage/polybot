@@ -8,6 +8,6 @@ User=root
 WorkingDirectory=/root/polybot
 Environment=PYTHONPATH=/root/polybot/src
 ExecStart=/root/polybot/.venv/bin/python -m polybot.indexers.onchain_alchemy
-TimeoutStartSec=300
+TimeoutStartSec=1800
 StandardOutput=journal
 StandardError=journal
