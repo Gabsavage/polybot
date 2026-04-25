@@ -39,10 +39,14 @@ LLM_PROMPT = (
     "2. Is the resolution source reliable and authoritative?\n"
     "3. Are there edge cases that could lead to disputes?\n"
     "4. Is there time sensitivity that could cause resolution issues?\n\n"
-    "Respond ONLY with this JSON (no markdown, no preamble):\n"
+    "Respond ONLY with this JSON (no markdown, no preamble).\n"
+    "IMPORTANT: reasons and red_flags must be ultra-short labels, "
+    "6-8 words MAX each. No full sentences. "
+    'Examples: "Outcome binaire objectif", "Source officielle (FOMC)", '
+    '"Date limite floue".\n\n'
     '{{"ambiguity_score": <float 0-1>, '
-    '"reasons": [<1-3 short strings>], '
-    '"red_flags": [<0-3 risk factors>]}}'
+    '"reasons": [<1-3 ultra-short labels>], '
+    '"red_flags": [<0-3 ultra-short risk labels>]}}'
 )
 
 
