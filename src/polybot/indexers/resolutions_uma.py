@@ -296,7 +296,9 @@ def run(db_path: str, alchemy_url: str) -> int:
         stop_requested = True
         logger.info("resolutions_sigterm_received")
 
-    signal.signal(signal.SIGTERM, _handle_sigterm)
+    import threading
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, _handle_sigterm)
 
     with httpx.Client(timeout=15.0) as client:
         from polybot.indexers.proxy_factory import get_current_block
@@ -387,7 +389,7 @@ def run(db_path: str, alchemy_url: str) -> int:
         except _GracefulStop:
             duration_ms = int((time.monotonic() - start_time) * 1000)
             update_indexer_state(
-                db_path, current_block_end, "partial",
+                db_path, current_block_end, "failed",
                 total_inserted, duration_ms,
             )
             logger.info(

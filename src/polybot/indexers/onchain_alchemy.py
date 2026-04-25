@@ -313,7 +313,9 @@ def run(db_path: str, alchemy_url: str) -> int:
         stop_requested = True
         logger.info("onchain_sigterm_received")
 
-    signal.signal(signal.SIGTERM, _handle_sigterm)
+    import threading
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, _handle_sigterm)
 
     with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
         head = get_current_block(client, alchemy_url)
@@ -406,7 +408,7 @@ def run(db_path: str, alchemy_url: str) -> int:
         except _GracefulStop:
             duration_ms = int((time.monotonic() - start_time) * 1000)
             update_indexer_state(
-                db_path, current_block_end, "partial",
+                db_path, current_block_end, "failed",
                 total_inserted, duration_ms,
             )
             logger.info(
