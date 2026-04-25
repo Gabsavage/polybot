@@ -269,35 +269,40 @@ class PolyBot:
         risk_icon = {"LOW": "🟢", "MEDIUM": "🟡", "HIGH": "🟠", "CRITICAL": "🔴"}.get(
             result["category"], "🟡"
         )
-        cached_label = "cached" if result.get("cached") else "fresh"
 
+        cat = result["category"]
+        sc = result["score"]
         lines = [
-            "⚖️ <b>Resolution Risk Analysis</b>",
+            f"⚖️ <b>Resolution Risk</b> — {risk_icon} <b>{cat}</b> ({sc:.2f})",
             "",
             f"<b>{title or slug}</b>",
-            f"Score : {risk_icon} <b>{result['category']}</b> ({result['score']:.3f})",
         ]
 
-        if result.get("llm_score") is not None:
-            lines.append(f"\n🤖 <b>LLM</b> ({cached_label}) : {result['llm_score']:.2f}")
-            for r in result.get("reasons", [])[:3]:
-                lines.append(f"   · {r}")
+        for r in result.get("reasons", [])[:3]:
+            lines.append(f"✅ {r}")
 
-        lines.append(f"\n📏 <b>Rules</b> : {result['rules_score']:.3f}")
-        lines.append(f"   Oracle : {res_source or 'N/A'} ({result['oracle_score']:.1f})")
+        for flag in result.get("red_flags", []):
+            lines.append(f"⚠️ {flag}")
 
-        if result.get("red_flags"):
-            lines.append("\n🚩 " + " · ".join(result["red_flags"]))
+        if result.get("llm_unavailable"):
+            lines.append("\n<i>⚠️ Score basé sur les règles uniquement</i>")
 
-        if event_slug:
-            lines.append(
-                f"\n🔗 <a href=\"https://polymarket.com/event/{event_slug}\">Voir le marché</a>"
-            )
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        market_url = (
+            f"https://polymarket.com/event/{event_slug}"
+            if event_slug
+            else "https://polymarket.com"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📊 Voir le marché", url=market_url)],
+        ])
 
         await update.message.reply_text(
             "\n".join(lines),
             parse_mode="HTML",
             disable_web_page_preview=True,
+            reply_markup=keyboard,
         )
 
     async def _cmd_help(
