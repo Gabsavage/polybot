@@ -3,7 +3,6 @@
 import contextlib
 from datetime import UTC, datetime, timedelta
 
-import duckdb
 import structlog
 from telegram import Update
 from telegram.ext import (
@@ -13,6 +12,7 @@ from telegram.ext import (
 )
 
 from polybot.config import Settings
+from polybot.db.connection import connect as db_connect
 
 logger = structlog.get_logger()
 
@@ -70,7 +70,7 @@ class PolyBot:
     async def _cmd_status(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
-        con = duckdb.connect(self.db_path, read_only=True)
+        con = db_connect(self.db_path, read_only=True)
         try:
             # Trades 24h
             trades_24h = con.execute(
@@ -129,7 +129,7 @@ class PolyBot:
                 await update.message.reply_text("Usage: /bankroll set <montant>")
                 return
 
-            con = duckdb.connect(self.db_path)
+            con = db_connect(self.db_path)
             con.execute(
                 "INSERT OR REPLACE INTO bankroll_state (id, amount, updated_at) "
                 "VALUES (1, ?, CURRENT_TIMESTAMP)",
@@ -140,7 +140,7 @@ class PolyBot:
             return
 
         # Display current bankroll
-        con = duckdb.connect(self.db_path, read_only=True)
+        con = db_connect(self.db_path, read_only=True)
         row = con.execute(
             "SELECT amount, updated_at FROM bankroll_state WHERE id = 1"
         ).fetchone()
@@ -185,7 +185,7 @@ class PolyBot:
             with contextlib.suppress(ValueError):
                 n = min(int(args[0]), 20)
 
-        con = duckdb.connect(self.db_path, read_only=True)
+        con = db_connect(self.db_path, read_only=True)
         rows = con.execute(
             "SELECT alert_id, wallet_address, condition_id, side, "
             "size_usd, emitted_at FROM alerts "

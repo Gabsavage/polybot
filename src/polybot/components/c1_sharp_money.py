@@ -9,6 +9,7 @@ import structlog
 
 from polybot.components.sizing import compute_size
 from polybot.config import Settings
+from polybot.db.connection import connect as db_connect
 from polybot.telegram.bot import PolyBot
 
 logger = structlog.get_logger()
@@ -95,7 +96,7 @@ class SharpMoneyDetector:
 
     def _fetch_new_trades(self) -> list[dict]:
         """Query trades since last check, joined with tracked_wallets."""
-        con = duckdb.connect(self.db_path, read_only=True)
+        con = db_connect(self.db_path, read_only=True)
         rows = con.execute(
             """
             SELECT t.transaction_hash, t.proxy_wallet, t.condition_id,
@@ -127,7 +128,7 @@ class SharpMoneyDetector:
     def _check_rate_limit(self, wallet: str, condition_id: str) -> bool:
         """Returns True if rate-limited (alert already exists within window)."""
         hours = self.settings.C1_RATE_LIMIT_HOURS
-        con = duckdb.connect(self.db_path, read_only=True)
+        con = db_connect(self.db_path, read_only=True)
         row = con.execute(
             "SELECT 1 FROM alerts "
             "WHERE wallet_address = ? AND condition_id = ? "
@@ -140,7 +141,7 @@ class SharpMoneyDetector:
 
     def _check_dedup(self, dedup_hash: str) -> bool:
         """Returns True if this hash was already seen recently."""
-        con = duckdb.connect(self.db_path, read_only=True)
+        con = db_connect(self.db_path, read_only=True)
         row = con.execute(
             "SELECT 1 FROM alerts WHERE dedup_hash = ? LIMIT 1",
             [dedup_hash],
@@ -191,7 +192,7 @@ class SharpMoneyDetector:
             return False
 
         # Sizing
-        con = duckdb.connect(self.db_path, read_only=True)
+        con = db_connect(self.db_path, read_only=True)
         bankroll, bankroll_updated = _get_bankroll(con)
         con.close()
 
@@ -231,7 +232,7 @@ class SharpMoneyDetector:
         )
 
         # Insert alert into DB
-        con = duckdb.connect(self.db_path)
+        con = db_connect(self.db_path)
         alert_id = _next_alert_id(con)
         con.execute(
             """
@@ -264,7 +265,7 @@ class SharpMoneyDetector:
         msg_id = await self.bot.send_alert("ops", message)
 
         if msg_id:
-            con = duckdb.connect(self.db_path)
+            con = db_connect(self.db_path)
             con.execute(
                 "UPDATE alerts SET telegram_message_id = ? WHERE alert_id = ?",
                 [msg_id, alert_id],
