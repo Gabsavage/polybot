@@ -1,0 +1,147 @@
+# CEX Hot Wallets on Polygon
+# Source: Polygonscan labels + Arkham + Dune + public repos
+# Last updated: 2026-04-26
+# Maintenance: quarterly review
+#
+# NOTE: Gemini does NOT support Polygon network for deposits/withdrawals
+# as of 2026-04-26. They only support ERC-20 MATIC on Ethereum mainnet.
+# Gemini is included with an empty wallet list for completeness.
+
+version: 1
+last_updated: "2026-04-26"
+
+exchanges:
+  binance:
+    name: "Binance"
+    hot_wallets:
+      - address: "0xf977814e90da44bfa03b6295a0616a897441acec"
+        label: "Binance Hot Wallet 20"
+        verified: true
+        source: "polygonscan"
+      - address: "0xe7804c37c13166ff0b37f5ae0bb07a3aebb6e245"
+        label: "Binance 48 / Hot Wallet 2"
+        verified: true
+        source: "polygonscan"
+      - address: "0x01c952174c24e1210d26961d456a77a39e1f0bb0"
+        label: "Binance Hot Wallet 23"
+        verified: true
+        source: "polygonscan"
+      - address: "0xa180fe01b906a1be37be6c534a3300785b20d947"
+        label: "Binance Hot Wallet 16"
+        verified: true
+        source: "polygonscan"
+      - address: "0xee7ae85f2fe2239e27d9c1e23fffe168d63b4055"
+        label: "Binance Hot Wallet 34"
+        verified: true
+        source: "polygonscan"
+      - address: "0xeb2d2f1b8c558a40207669291fda468e50c8a0bb"
+        label: "Binance Hot Wallet 10"
+        verified: true
+        source: "polygonscan"
+      - address: "0x73f5ebe90f27b46ea12e5795d16c4b408b19cc6f"
+        label: "Binance Hot Wallet 18"
+        verified: true
+        source: "polygonscan"
+
+  coinbase:
+    name: "Coinbase"
+    hot_wallets:
+      - address: "0x19ab546e77d0cd3245b2aad46bd80dc4707d6307"
+        label: "Coinbase 9"
+        verified: true
+        source: "polygonscan"
+      - address: "0x9810762578accf1f314320cca5b72506ae7d7630"
+        label: "Coinbase 2"
+        verified: true
+        source: "polygonscan"
+      - address: "0xc070a61d043189d99bbf4baa58226bf0991c7b11"
+        label: "Coinbase 4"
+        verified: true
+        source: "polygonscan"
+
+  okx:
+    name: "OKX"
+    hot_wallets:
+      - address: "0x559432e18b281731c054cd703d4b49872be4ed53"
+        label: "OKX Hot Wallet 5"
+        verified: true
+        source: "polygonscan"
+      - address: "0x06959153b974d0d5fdfd87d561db6d8d4fa0bb0b"
+        label: "OKX 1"
+        verified: true
+        source: "polygonscan"
+      - address: "0x7c0629bbbaf7d68ffaa393e3fedc9b633679fa5f"
+        label: "OKX Hot Wallet"
+        verified: true
+        source: "polygonscan"
+
+  kraken:
+    name: "Kraken"
+    hot_wallets:
+      - address: "0xe84f75fc9caa49876d0ba18d309da4231d44e94d"
+        label: "Kraken 43"
+        verified: true
+        source: "polygonscan"
+      - address: "0x9c2bd617b77961ee2c5e3038dfb0c822cb75d82a"
+        label: "Kraken 42"
+        verified: true
+        source: "polygonscan"
+      - address: "0x555e179d64335945fc6b155b7235a31b0a595542"
+        label: "Kraken 40"
+        verified: true
+        source: "polygonscan"
+
+  bybit:
+    name: "Bybit"
+    hot_wallets:
+      - address: "0xf89d7b9c864f589bbf53a82105107622b35eaa40"
+        label: "Bybit Hot Wallet"
+        verified: true
+        source: "polygonscan"
+
+  kucoin:
+    name: "Kucoin"
+    hot_wallets:
+      - address: "0x9ac5637d295fea4f51e086c329d791cc157b1c84"
+        label: "Kucoin 29"
+        verified: true
+        source: "polygonscan"
+
+  gate_io:
+    name: "Gate.io"
+    hot_wallets:
+      - address: "0x0d0707963952f2fba59dd06f2b425ace40b492fe"
+        label: "Gate.io 1"
+        verified: true
+        source: "polygonscan"
+
+  crypto_com:
+    name: "Crypto.com"
+    hot_wallets:
+      - address: "0x72a53cdbbcc1b9efa39c834a540550e23463aacb"
+        label: "Crypto.com"
+        verified: true
+        source: "polygonscan"
+      - address: "0xfa0b641678f5115ad8a8de5752016bd1359681b9"
+        label: "Crypto.com 6"
+        verified: true
+        source: "polygonscan"
+
+  gemini:
+    name: "Gemini"
+    # Gemini does NOT support the Polygon network for deposits/withdrawals.
+    # Only ERC-20 MATIC on Ethereum mainnet is supported.
+    # No hot wallet addresses exist on Polygon.
+    hot_wallets: []
+
+  mexc:
+    name: "MEXC"
+    hot_wallets:
+      - address: "0x51e3d44172868acc60d68ca99591ce4230bc75e0"
+        label: "MEXC 8"
+        verified: true
+        source: "polygonscan"
+      - address: "0x576b81f0c21edbc920ad63feeeb2b0736b018a58"
+        label: "MEXC 11"
+        verified: true
+        source: "polygonscan"
