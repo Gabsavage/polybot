@@ -22,21 +22,46 @@ MOCK_YAML = {
         "binance": {
             "name": "Binance",
             "hot_wallets": [
-                {"address": "0xaaa1", "label": "Binance HW 1", "verified": True, "source": "polygonscan"},
-                {"address": "0xaaa2", "label": "Binance HW 2", "verified": True, "source": "arkham"},
+                {
+                    "address": "0xaaa1",
+                    "label": "Binance HW 1",
+                    "verified": True,
+                    "source": "polygonscan",
+                },
+                {
+                    "address": "0xaaa2",
+                    "label": "Binance HW 2",
+                    "verified": True,
+                    "source": "arkham",
+                },
             ],
         },
         "coinbase": {
             "name": "Coinbase",
             "hot_wallets": [
-                {"address": "0xbbb1", "label": "Coinbase HW", "verified": True, "source": "polygonscan"},
+                {
+                    "address": "0xbbb1",
+                    "label": "Coinbase HW",
+                    "verified": True,
+                    "source": "polygonscan",
+                },
             ],
         },
         "okx": {
             "name": "OKX",
             "hot_wallets": [
-                {"address": "0xCCC1", "label": "OKX HW 1", "verified": True, "source": "arkham"},
-                {"address": "0xCCC2", "label": "OKX HW 2", "verified": False, "source": "dune"},
+                {
+                    "address": "0xCCC1",
+                    "label": "OKX HW 1",
+                    "verified": True,
+                    "source": "arkham",
+                },
+                {
+                    "address": "0xCCC2",
+                    "label": "OKX HW 2",
+                    "verified": False,
+                    "source": "dune",
+                },
             ],
         },
     },
@@ -101,12 +126,14 @@ def test_yaml_structure():
 
     assert "exchanges" in data
     total = 0
-    for key, exchange in data["exchanges"].items():
+    for _key, exchange in data["exchanges"].items():
         assert "name" in exchange
         assert "hot_wallets" in exchange
         for wallet in exchange["hot_wallets"]:
             assert "address" in wallet
             assert wallet["address"].startswith("0x")
-            assert wallet["address"] == wallet["address"].lower(), f"Address not lowercase in YAML: {wallet['address']}"
+            assert wallet["address"] == wallet["address"].lower(), (
+                f"Address not lowercase in YAML: {wallet['address']}"
+            )
             total += 1
     assert total >= 20, f"Expected >= 20 wallets, got {total}"

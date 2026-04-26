@@ -56,9 +56,7 @@ def test_migrations_tracking(tmp_path: Path):
     apply_migrations(str(db_path), str(migrations_dir))
 
     con = duckdb.connect(str(db_path))
-    applied = con.execute(
-        "SELECT filename FROM _migrations ORDER BY applied_at"
-    ).fetchall()
+    applied = con.execute("SELECT filename FROM _migrations ORDER BY applied_at").fetchall()
     con.close()
 
     assert len(applied) == 8

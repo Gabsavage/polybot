@@ -27,26 +27,31 @@ def load_wallets(yaml_path: Path) -> list[dict]:
     wallets = []
     for _key, exchange in data["exchanges"].items():
         for wallet in exchange["hot_wallets"]:
-            wallets.append({
-                "address": wallet["address"].lower(),
-                "exchange_name": exchange["name"],
-                "label": wallet.get("label"),
-                "verified": wallet.get("verified", True),
-                "source": wallet.get("source"),
-            })
+            wallets.append(
+                {
+                    "address": wallet["address"].lower(),
+                    "exchange_name": exchange["name"],
+                    "label": wallet.get("label"),
+                    "verified": wallet.get("verified", True),
+                    "source": wallet.get("source"),
+                }
+            )
     return wallets
 
 
 def seed(db_path: str | Path, wallets: list[dict]) -> dict:
     con = duckdb.connect(str(db_path))
     for w in wallets:
-        con.execute(UPSERT_SQL, [
-            w["address"],
-            w["exchange_name"],
-            w["label"],
-            w["verified"],
-            w["source"],
-        ])
+        con.execute(
+            UPSERT_SQL,
+            [
+                w["address"],
+                w["exchange_name"],
+                w["label"],
+                w["verified"],
+                w["source"],
+            ],
+        )
     con.close()
     return {"count": len(wallets)}
 
