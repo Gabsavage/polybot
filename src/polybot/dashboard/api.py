@@ -1,5 +1,6 @@
 """Polybot Dashboard API — read-only access to DuckDB monitoring data."""
 
+import time
 from typing import Annotated
 
 import duckdb
@@ -22,9 +23,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+MAX_RETRIES = 5
+BASE_DELAY = 1.0
+
+
+def _connect_with_retry() -> duckdb.DuckDBPyConnection:
+    for attempt in range(MAX_RETRIES):
+        try:
+            return duckdb.connect(str(settings.DUCKDB_PATH))
+        except duckdb.IOException:
+            if attempt == MAX_RETRIES - 1:
+                raise
+            delay = BASE_DELAY * 2**attempt
+            logger.warning("dashboard_db_retry", attempt=attempt + 1, delay=delay)
+            time.sleep(delay)
+    raise duckdb.IOException("Failed to connect after retries")
+
 
 def get_db():
-    con = duckdb.connect(str(settings.DUCKDB_PATH))
+    con = _connect_with_retry()
     try:
         yield con
     finally:
