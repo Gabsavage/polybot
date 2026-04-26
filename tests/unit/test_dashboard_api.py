@@ -5,6 +5,74 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+def _seed_alerts(db_path: str) -> None:
+    """Insert test data for alerts, wallets, trades, markets, outcomes, and cache."""
+    con = duckdb.connect(db_path)
+
+    # Markets
+    con.execute(
+        "INSERT INTO markets (condition_id, title, slug, volume_24h, liquidity_usd, active) "
+        "VALUES ('cond_1', 'Market One', 'market-one', 50000, 20000, TRUE), "
+        "       ('cond_2', 'Market Two', 'market-two', 5000, 1000, TRUE)"
+    )
+
+    # Alerts: 2 C1 on cond_1, 1 C2 on cond_2
+    con.execute(
+        "INSERT INTO alerts "
+        "(alert_id, component, emitted_at, wallet_address, condition_id, "
+        " side, size_usd, price, score, alignment_score, shadow_mode, features_passed) "
+        "VALUES "
+        "('a1', 'C1', CURRENT_TIMESTAMP, '0xwallet_0', 'cond_1', "
+        " 'YES', 100.00, 0.65, 8, 3, TRUE, 'volume,edge'), "
+        "('a2', 'C1', CURRENT_TIMESTAMP, '0xwallet_1', 'cond_1', "
+        " 'NO', 200.00, 0.35, 7, 2, TRUE, 'volume'), "
+        "('a3', 'C2', CURRENT_TIMESTAMP, '0xwallet_2', 'cond_2', "
+        " 'YES', 150.00, 0.80, 9, 4, FALSE, 'edge,momentum')"
+    )
+
+    # Outcomes: a1 correct +25, a2 incorrect -15
+    con.execute(
+        "INSERT INTO alert_outcomes "
+        "(alert_id, condition_id, resolution_outcome, was_direction_correct, "
+        " shadow_pnl_simulated, price_at_alert, price_at_resolution) "
+        "VALUES "
+        "('a1', 'cond_1', 'YES', TRUE, 25.00, 0.65, 0.90), "
+        "('a2', 'cond_1', 'YES', FALSE, -15.00, 0.35, 0.20)"
+    )
+
+    # Tracked wallets: 5 tier A (4 active, 1 inactive)
+    for i in range(5):
+        active = i < 4
+        con.execute(
+            "INSERT INTO tracked_wallets (address, tier, active, source, added_at) "
+            "VALUES (?, 'A', ?, 'scanner', CURRENT_TIMESTAMP)",
+            [f"0xwallet_{i}", active],
+        )
+
+    # Trades for wallets 0-2 (4 each)
+    for i in range(3):
+        for j in range(4):
+            con.execute(
+                "INSERT INTO trades "
+                "(transaction_hash, proxy_wallet, condition_id, asset_id, "
+                " side, size_usd, price, timestamp_unix, timestamp_ts) "
+                "VALUES (?, ?, 'cond_1', 'asset_1', 'YES', 50.00, 0.60, "
+                "        1700000000, CURRENT_TIMESTAMP)",
+                [f"tx_{i}_{j}", f"0xwallet_{i}"],
+            )
+
+    # 50 resolution_risk_cache entries
+    for i in range(50):
+        con.execute(
+            "INSERT INTO resolution_risk_cache "
+            "(condition_id, llm_score, computed_at) "
+            "VALUES (?, 0.50, CURRENT_TIMESTAMP)",
+            [f"cache_cond_{i}"],
+        )
+
+    con.close()
+
+
 @pytest.fixture
 def db_path(tmp_path):
     path = str(tmp_path / "test.duckdb")
@@ -171,3 +239,73 @@ class TestStatusEndpoint:
         assert len(data["indexers"]) == 1
         assert data["indexers"][0]["name"] == "markets_gamma"
         assert data["indexers"][0]["ingested_count"] == 46000
+
+
+class TestAlertsEndpoint:
+    def test_alerts_returns_all(self, client, db_path):
+        _seed_alerts(db_path)
+        resp = client.get("/api/alerts?days=7")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 3
+
+    def test_alerts_filter_c1(self, client, db_path):
+        _seed_alerts(db_path)
+        resp = client.get("/api/alerts?days=7&component=C1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+        assert all(a["component"] == "C1" for a in data)
+
+
+class TestWalletsEndpoint:
+    def test_wallets_returns_metrics(self, client, db_path):
+        _seed_alerts(db_path)
+        resp = client.get("/api/wallets")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 5
+        w0 = next(w for w in data if w["address"] == "0xwallet_0")
+        assert w0["trades_total"] == 4
+        assert w0["active"] is True
+
+
+class TestPerformanceEndpoint:
+    def test_performance_returns_series(self, client, db_path):
+        _seed_alerts(db_path)
+        resp = client.get("/api/performance?days=30")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "daily" in data
+        assert "cumulative" in data
+        assert "alignment" in data
+        total_pnl = sum(
+            c["pnl"] for c in data["cumulative"] if c["pnl"] is not None
+        )
+        assert total_pnl == pytest.approx(10.0, abs=0.01)
+
+
+class TestCostsEndpoint:
+    def test_costs_estimate(self, client, db_path):
+        _seed_alerts(db_path)
+        resp = client.get("/api/costs")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["llm_calls_month"] == 50
+        assert data["llm_cost_estimate"] == pytest.approx(0.05)
+        assert data["vps_monthly"] == 4.0
+
+
+class TestAuditEndpoint:
+    def test_audit_returns_entries(self, client, db_path):
+        con = duckdb.connect(db_path)
+        con.execute(
+            "INSERT INTO audit_log (event_type, target, action, reason) "
+            "VALUES ('kill_switch', 'c1', 'enable', 'testing')"
+        )
+        con.close()
+        resp = client.get("/api/audit?limit=10")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["event_type"] == "kill_switch"
