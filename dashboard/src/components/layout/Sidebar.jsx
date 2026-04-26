@@ -13,7 +13,7 @@ export default function Sidebar() {
   return (
     <aside className="hidden md:flex md:w-60 lg:w-60 md:flex-col glass-card my-3 ml-3 mr-0 py-6 px-4 sticky top-3 h-[calc(100vh-1.5rem)]">
       <div className="flex flex-col items-center mb-10">
-        <img src="/logo.png" alt="Polybot" className="w-24 h-24 rounded-2xl mb-3" />
+        <img src="/logo.png" alt="Polybot" className="w-32 h-32 rounded-2xl mb-3" />
         <h1 className="font-extrabold text-xl tracking-widest text-text-primary">
           POLYBOT
         </h1>
