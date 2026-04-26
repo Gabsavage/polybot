@@ -305,3 +305,180 @@ class TestGetUntracedWallets:
 
         result = get_untraced_wallets(db_path, max_wallets=3)
         assert len(result) == 3
+
+
+class TestRun:
+    def test_end_to_end(self, db_path):
+        """3 wallets: 1 Binance direct, 1 Coinbase hop2, 1 no USDC."""
+        from polybot.indexers.cex_funding import run
+
+        _seed_cex_hot_wallet(db_path, "0xbinance_hw", "Binance")
+        _seed_cex_hot_wallet(db_path, "0xcoinbase_hw", "Coinbase")
+
+        _seed_trades(
+            db_path,
+            [
+                ("0xdirect", 10000.0),
+                ("0xvia_deposit", 5000.0),
+                ("0xno_usdc", 3000.0),
+            ],
+        )
+
+        call_count = {"n": 0}
+
+        def mock_post(url, **kwargs):
+            body = kwargs.get("json", {})
+            params = body.get("params", [{}])
+            to_addr = params[0].get("toAddress", "") if params else ""
+            call_count["n"] += 1
+
+            if to_addr == "0xdirect":
+                return _mock_rpc_response(
+                    _alchemy_transfers_response(
+                        [
+                            {
+                                "from": "0xbinance_hw",
+                                "to": "0xdirect",
+                                "value": 1000.0,
+                                "blockNum": "0x1",
+                            },
+                        ]
+                    )
+                )
+            if to_addr == "0xbinance_hw":
+                return _mock_rpc_response(_alchemy_transfers_response([]))
+            if to_addr == "0xvia_deposit":
+                return _mock_rpc_response(
+                    _alchemy_transfers_response(
+                        [
+                            {
+                                "from": "0xmy_deposit",
+                                "to": "0xvia_deposit",
+                                "value": 500.0,
+                                "blockNum": "0x1",
+                            },
+                        ]
+                    )
+                )
+            if to_addr == "0xmy_deposit":
+                return _mock_rpc_response(
+                    _alchemy_transfers_response(
+                        [
+                            {
+                                "from": "0xcoinbase_hw",
+                                "to": "0xmy_deposit",
+                                "value": 5000.0,
+                                "blockNum": "0x1",
+                            },
+                        ]
+                    )
+                )
+            # 0xno_usdc and anything else
+            return _mock_rpc_response(_alchemy_transfers_response([]))
+
+        with (
+            patch("polybot.indexers.cex_funding.httpx.Client") as mock_cls,
+            patch("polybot.indexers.cex_funding.time.sleep"),
+        ):
+            mock_client = MagicMock()
+            mock_client.post.side_effect = mock_post
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_cls.return_value = mock_client
+
+            count = run(db_path, "http://test", max_wallets=10)
+
+        # count = wallets with CEX match
+        assert count == 2
+
+        con = duckdb.connect(db_path)
+        rows = con.execute(
+            "SELECT wallet_address, cex_source, method, deposit_address "
+            "FROM cex_funding_map ORDER BY wallet_address"
+        ).fetchall()
+        con.close()
+
+        assert len(rows) == 3
+        mapped = {r[0]: r for r in rows}
+
+        # 0xdirect → Binance direct
+        assert mapped["0xdirect"][1] == "Binance"
+        assert mapped["0xdirect"][2] == "direct_hot_wallet"
+
+        # 0xno_usdc → no match
+        assert mapped["0xno_usdc"][1] is None
+        assert mapped["0xno_usdc"][2] is None
+
+        # 0xvia_deposit → Coinbase via deposit
+        assert mapped["0xvia_deposit"][1] == "Coinbase"
+        assert mapped["0xvia_deposit"][2] == "hop2_hot_wallet"
+        assert mapped["0xvia_deposit"][3] == "0xmy_deposit"
+
+    def test_no_wallets_noop(self, db_path):
+        """No untraced wallets → 0 count, state updated."""
+        from polybot.indexers.cex_funding import run
+
+        with patch("polybot.indexers.cex_funding.httpx.Client"):
+            count = run(db_path, "http://test", max_wallets=10)
+        assert count == 0
+
+        con = duckdb.connect(db_path)
+        row = con.execute(
+            "SELECT last_run_status FROM indexer_state WHERE indexer_name = 'cex_funding'"
+        ).fetchone()
+        con.close()
+        assert row[0] == "success"
+
+    def test_skips_failed_wallet(self, db_path):
+        """A wallet that raises RPCError is skipped, others continue."""
+        from polybot.indexers.cex_funding import run
+
+        _seed_cex_hot_wallet(db_path, "0xbinance_hw", "Binance")
+        _seed_trades(
+            db_path,
+            [
+                ("0xgood", 10000.0),
+                ("0xbad", 5000.0),
+            ],
+        )
+
+        def mock_post(url, **kwargs):
+            body = kwargs.get("json", {})
+            params = body.get("params", [{}])
+            to_addr = params[0].get("toAddress", "") if params else ""
+
+            if to_addr == "0xbad":
+                return httpx.Response(429, request=httpx.Request("POST", "http://test"))
+            if to_addr == "0xgood":
+                return _mock_rpc_response(
+                    _alchemy_transfers_response(
+                        [
+                            {
+                                "from": "0xbinance_hw",
+                                "to": "0xgood",
+                                "value": 1000.0,
+                                "blockNum": "0x1",
+                            },
+                        ]
+                    )
+                )
+            return _mock_rpc_response(_alchemy_transfers_response([]))
+
+        with (
+            patch("polybot.indexers.cex_funding.httpx.Client") as mock_cls,
+            patch("polybot.indexers.cex_funding.time.sleep"),
+        ):
+            mock_client = MagicMock()
+            mock_client.post.side_effect = mock_post
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_cls.return_value = mock_client
+
+            count = run(db_path, "http://test", max_wallets=10)
+
+        assert count == 1
+
+        con = duckdb.connect(db_path)
+        total = con.execute("SELECT COUNT(*) FROM cex_funding_map").fetchone()[0]
+        con.close()
+        assert total == 1

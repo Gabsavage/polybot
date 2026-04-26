@@ -253,3 +253,72 @@ def update_indexer_state(
         )
 
     db_write_with_retry(db_path, _do)
+
+
+# --- Main run ---
+
+
+def run(db_path: str, alchemy_url: str, max_wallets: int = 100) -> int:
+    """Trace funding for untraced wallets, identify CEX sources."""
+    start_time = time.monotonic()
+
+    wallets = get_untraced_wallets(db_path, max_wallets)
+    if not wallets:
+        logger.info("cex_funding_no_untraced")
+        duration_ms = int((time.monotonic() - start_time) * 1000)
+        update_indexer_state(db_path, "success", 0, duration_ms)
+        return 0
+
+    logger.info("cex_funding_starting", untraced=len(wallets))
+    cex_matched = 0
+    traced = 0
+
+    with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
+        for wallet in wallets:
+            try:
+                hops = trace_funding_hops(client, alchemy_url, wallet)
+                cex_result = identify_cex(db_path, hops["funded_by"], hops["funded_by_hop2"])
+                insert_mapping(db_path, wallet, hops, cex_result)
+                traced += 1
+                if cex_result:
+                    cex_matched += 1
+                logger.info(
+                    "cex_funding_traced",
+                    wallet=wallet[:12],
+                    cex=cex_result["cex_source"] if cex_result else None,
+                    method=cex_result["method"] if cex_result else None,
+                )
+            except Exception as e:
+                logger.warning(
+                    "cex_funding_wallet_error",
+                    wallet=wallet[:12],
+                    error=str(e)[:200],
+                )
+
+    duration_ms = int((time.monotonic() - start_time) * 1000)
+    update_indexer_state(db_path, "success", cex_matched, duration_ms)
+    logger.info(
+        "cex_funding_complete",
+        traced=traced,
+        cex_matched=cex_matched,
+        duration_ms=duration_ms,
+    )
+    return cex_matched
+
+
+def main():
+    from polybot.config import Settings
+    from polybot.logging import setup_logging
+
+    settings = Settings()
+    setup_logging(settings.LOG_LEVEL, settings.LOG_DIR)
+    logger.info("cex_funding_indexer_starting")
+    count = run(
+        db_path=str(settings.DUCKDB_PATH),
+        alchemy_url=settings.ALCHEMY_POLYGON_URL,
+    )
+    print(f"CEX funding indexer complete: {count} wallets matched to CEX")
+
+
+if __name__ == "__main__":
+    main()
