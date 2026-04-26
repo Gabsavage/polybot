@@ -278,27 +278,33 @@ def get_performance(con: DB, days: int = Query(default=30, ge=1, le=365)):
 @app.get("/api/markets/hot")
 def get_hot_markets(con: DB):
     rows = con.execute(
-        "SELECT m.condition_id, m.title, m.slug, m.volume_24h, m.liquidity_usd, "
-        "m.end_date, m.category, "
-        "COUNT(a.alert_id) AS alert_count "
+        "SELECT m.condition_id, m.title, m.slug, "
+        "       MAX(a.score) AS c2_score_max, "
+        "       (SELECT a2.features_passed FROM alerts a2 "
+        "        WHERE a2.condition_id = m.condition_id AND a2.component = 'C2' "
+        "        ORDER BY a2.emitted_at DESC LIMIT 1) AS features_last, "
+        "       COUNT(a.alert_id) AS c2_alerts_7d, "
+        "       MAX(a.emitted_at) AS last_alert_at, "
+        "       m.volume_24h, m.end_date "
         "FROM markets m "
-        "LEFT JOIN alerts a ON m.condition_id = a.condition_id "
-        "AND a.emitted_at >= CURRENT_DATE - INTERVAL '7 DAY' "
-        "WHERE m.active = TRUE AND m.volume_24h > 10000 "
-        "GROUP BY m.condition_id, m.title, m.slug, m.volume_24h, "
-        "m.liquidity_usd, m.end_date, m.category "
-        "ORDER BY m.volume_24h DESC LIMIT 50"
+        "JOIN alerts a ON m.condition_id = a.condition_id "
+        "WHERE a.component = 'C2' "
+        "  AND a.emitted_at >= CURRENT_DATE - INTERVAL '7 DAY' "
+        "GROUP BY m.condition_id, m.title, m.slug, m.volume_24h, m.end_date "
+        "ORDER BY c2_score_max DESC, c2_alerts_7d DESC "
+        "LIMIT 10"
     ).fetchall()
     return [
         {
             "condition_id": r[0],
             "title": r[1],
             "slug": r[2],
-            "volume_24h": float(r[3]) if r[3] else None,
-            "liquidity_usd": float(r[4]) if r[4] else None,
-            "end_date": str(r[5]) if r[5] else None,
-            "category": r[6],
-            "alert_count": r[7],
+            "c2_score_max": r[3],
+            "features_last": r[4],
+            "c2_alerts_7d": r[5],
+            "last_alert_at": str(r[6]) if r[6] else None,
+            "volume_24h": float(r[7]) if r[7] is not None else None,
+            "end_date": str(r[8]) if r[8] else None,
         }
         for r in rows
     ]

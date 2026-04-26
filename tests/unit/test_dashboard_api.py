@@ -532,3 +532,37 @@ class TestWalletTradesEndpoint:
         # Should still return only 1 trade row despite 2 alerts joining
         assert len(data) == 1
         assert data[0]["transaction_hash"] == "tx_only"
+
+
+class TestHotMarketsRanking:
+    def test_orders_by_c2_score_max(self, client, db_path):
+        con = duckdb.connect(db_path)
+        con.execute(
+            "INSERT INTO markets (condition_id, title, slug, volume_24h, active) "
+            "VALUES ('cond_low', 'Low Score', 'low', 99999, TRUE), "
+            "       ('cond_mid', 'Mid Score', 'mid', 50000, TRUE), "
+            "       ('cond_top', 'Top Score', 'top', 1000, TRUE)"
+        )
+        # cond_top has score 9 ; cond_mid 7 ; cond_low 5
+        # Despite cond_low having the highest volume, cond_top should rank first
+        con.execute(
+            "INSERT INTO alerts "
+            "(alert_id, component, emitted_at, wallet_address, condition_id, "
+            " side, size_usd, price, score, features_passed) "
+            "VALUES "
+            "('h1', 'C2', CURRENT_TIMESTAMP, '0xw', 'cond_low', 'YES', 100, 0.5, 5, 'volume'), "
+            "('h2', 'C2', CURRENT_TIMESTAMP, '0xw', 'cond_mid', 'YES', 100, 0.5, 7, 'volume,edge'), "
+            "('h3', 'C2', CURRENT_TIMESTAMP, '0xw', 'cond_top', 'YES', 100, 0.5, 9, 'volume,edge,momentum')"
+        )
+        con.close()
+
+        resp = client.get("/api/markets/hot")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 3
+        assert data[0]["condition_id"] == "cond_top"
+        assert data[0]["c2_score_max"] == 9
+        assert data[0]["c2_alerts_7d"] == 1
+        assert data[0]["features_last"] == "volume,edge,momentum"
+        assert data[1]["condition_id"] == "cond_mid"
+        assert data[2]["condition_id"] == "cond_low"
