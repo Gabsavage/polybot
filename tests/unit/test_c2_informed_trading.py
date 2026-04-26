@@ -482,6 +482,21 @@ class TestAlignment:
         assert result["alignment_score"] is None
 
 
+def _seed_cluster(db_path: str, cluster_id: str, funded_by: str, wallets: list[str], cex_source: str | None = None):
+    """Insert a cluster with members."""
+    con = duckdb.connect(db_path)
+    con.execute(
+        "INSERT INTO wallet_clusters (cluster_id, funded_by, cex_source, size) VALUES (?, ?, ?, ?)",
+        [cluster_id, funded_by, cex_source, len(wallets)],
+    )
+    for w in wallets:
+        con.execute(
+            "INSERT INTO wallet_cluster_members (wallet_address, cluster_id, funded_by) VALUES (?, ?, ?)",
+            [w, cluster_id, funded_by],
+        )
+    con.close()
+
+
 def _insert_cex_funding(
     db_path: str,
     wallet: str,
@@ -782,6 +797,87 @@ class TestAlertOutcomes:
         ).fetchone()[0]
         con.close()
         assert count == 1
+
+
+class TestClusterCoPresence:
+    def test_cluster_co_presence_fires(self, c2, db_path):
+        """3 wallets from same cluster in top-10 -> returns (3, cex_source)."""
+        _seed_market(db_path, "cond_cluster")
+        now = datetime.now(UTC)
+        for i, wallet in enumerate(["0xw1", "0xw2", "0xw3"]):
+            _insert_trade_all(
+                db_path,
+                f"tx_cl_top_{i}",
+                wallet=wallet,
+                condition_id="cond_cluster",
+                size_usd=1000.0 * (i + 1),
+                ts=now - timedelta(minutes=10),
+            )
+        for j, wallet in enumerate(["0xw4", "0xw5"]):
+            _insert_trade_all(
+                db_path,
+                f"tx_cl_other_{j}",
+                wallet=wallet,
+                condition_id="cond_cluster",
+                size_usd=100.0,
+                ts=now - timedelta(minutes=10),
+            )
+
+        _seed_cluster(db_path, "clust_abc", "0xfunder_x", ["0xw1", "0xw2", "0xw3"], "Binance")
+
+        count, source = c2.compute_cluster_co_presence("cond_cluster")
+        assert count == 3
+        assert source == "Binance"
+
+    def test_cluster_co_presence_below_threshold(self, c2, db_path):
+        """1 wallet from cluster in top-10 -> returns (0, None)."""
+        _seed_market(db_path, "cond_low")
+        now = datetime.now(UTC)
+        _insert_trade_all(
+            db_path,
+            "tx_low_0",
+            wallet="0xw1",
+            condition_id="cond_low",
+            size_usd=1000.0,
+            ts=now - timedelta(minutes=10),
+        )
+        for j, wallet in enumerate(["0xw4", "0xw5", "0xw6"]):
+            _insert_trade_all(
+                db_path,
+                f"tx_low_other_{j}",
+                wallet=wallet,
+                condition_id="cond_low",
+                size_usd=500.0,
+                ts=now - timedelta(minutes=10),
+            )
+
+        _seed_cluster(db_path, "clust_xyz", "0xfunder_y", ["0xw1", "0xw99"], None)
+
+        count, source = c2.compute_cluster_co_presence("cond_low")
+        assert count == 0
+        assert source is None
+
+    def test_cluster_bonus_in_score(self, c2, db_path):
+        """cluster_count >= 3 -> score += 1, in features_passed."""
+        _seed_market(db_path, "cond_bonus", volume_24h=100.0, volume_cumulative=10_000.0)
+        now = datetime.now(UTC)
+        for i, wallet in enumerate(["0xc1", "0xc2", "0xc3", "0xc4"]):
+            _insert_trade_all(
+                db_path,
+                f"tx_bonus_{i}",
+                wallet=wallet,
+                condition_id="cond_bonus",
+                size_usd=5000.0 * (i + 1),
+                ts=now - timedelta(minutes=5),
+            )
+
+        _seed_cluster(db_path, "clust_big", "0xfunder_z", ["0xc1", "0xc2", "0xc3", "0xc4"], "OKX")
+
+        result = c2.compute_score("cond_bonus")
+        assert "cluster_co_presence" in result["features_passed"]
+        assert result["raw_values"]["cluster_co_presence"] == 4
+        base_features_count = sum(1 for k, v in result["features"].items() if v)
+        assert result["score"] == base_features_count + 1
 
 
 # --- Shadow mode ---

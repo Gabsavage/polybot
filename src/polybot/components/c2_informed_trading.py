@@ -318,6 +318,57 @@ class InformedTradingDetector:
             return 0.0, None
         return row[2] / total, row[1]
 
+    def compute_cluster_co_presence(self, condition_id: str) -> tuple[int, str | None]:
+        """Max wallets from same cluster among top-10 traders by 1h volume."""
+        con = db_connect(self.db_path, read_only=True)
+
+        top10_rows = con.execute(
+            """
+            SELECT proxy_wallet
+            FROM trades_all
+            WHERE condition_id = ? AND timestamp_ts >= CURRENT_TIMESTAMP - INTERVAL 1 HOUR
+            GROUP BY proxy_wallet
+            ORDER BY SUM(size_usd) DESC
+            LIMIT 10
+            """,
+            [condition_id],
+        ).fetchall()
+
+        if not top10_rows:
+            con.close()
+            return 0, None
+
+        top10 = [r[0] for r in top10_rows]
+        placeholders = ", ".join(["?"] * len(top10))
+
+        row = con.execute(
+            f"""
+            SELECT cluster_id, COUNT(*) as cnt
+            FROM wallet_cluster_members
+            WHERE wallet_address IN ({placeholders})
+            GROUP BY cluster_id
+            HAVING COUNT(*) >= 2
+            ORDER BY cnt DESC
+            LIMIT 1
+            """,
+            top10,
+        ).fetchone()
+
+        if not row:
+            con.close()
+            return 0, None
+
+        cluster_id, count = row[0], int(row[1])
+
+        src_row = con.execute(
+            "SELECT cex_source FROM wallet_clusters WHERE cluster_id = ? AND cex_source IS NOT NULL",
+            [cluster_id],
+        ).fetchone()
+        con.close()
+
+        cex_source = src_row[0] if src_row else None
+        return count, cex_source
+
     # --- Scoring ---
 
     def compute_score(self, condition_id: str) -> dict:
@@ -354,6 +405,16 @@ class InformedTradingDetector:
         }
         score = sum(features.values())
         features_passed = [k for k, v in features.items() if v]
+
+        # Cluster co-presence bonus (not part of /8 denominator)
+        cluster_count, cluster_source = self.compute_cluster_co_presence(condition_id)
+        cluster_bonus = cluster_count >= 3
+        if cluster_bonus:
+            score += 1
+            features_passed.append("cluster_co_presence")
+
+        raw_values["cluster_co_presence"] = cluster_count
+        raw_values["cluster_co_presence_source"] = cluster_source
 
         return {
             "score": score,
@@ -574,6 +635,12 @@ class InformedTradingDetector:
                 src_str = f" ({src})" if src else ""
                 feature_lines.append(
                     f"  ✓ CEX deposit partage : {raw['shared_cex_deposit']:.0%}{src_str}"
+                )
+            elif f == "cluster_co_presence":
+                cl_src = raw.get("cluster_co_presence_source", "")
+                cl_str = f" ({cl_src})" if cl_src else ""
+                feature_lines.append(
+                    f"  ✓ Cluster détecté : {raw['cluster_co_presence']} wallets même source{cl_str}"
                 )
 
         # Alignment
