@@ -397,3 +397,10 @@ class TestClustersEndpoint:
         assert data[1]["cluster_id"] == "cluster_b"
         assert data[1]["tier_a_count"] == 1
         assert data[1]["member_count"] == 5
+
+
+class TestWalletDetailEndpoint:
+    def test_returns_404_when_wallet_not_found(self, client):
+        resp = client.get("/api/wallets/0xDEADBEEF")
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Wallet not found"

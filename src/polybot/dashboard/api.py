@@ -5,7 +5,7 @@ from typing import Annotated
 
 import duckdb
 import structlog
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from polybot.config import Settings
@@ -364,6 +364,27 @@ def get_clusters(con: DB):
         }
         for r in rows
     ]
+
+
+@app.get("/api/wallets/{address}")
+def get_wallet_detail(con: DB, address: str):
+    row = con.execute(
+        "SELECT w.address, w.notes, w.tier, w.active, w.tier_a_confidence, "
+        "       w.honeypot_flag, w.added_at, w.source, "
+        "       COUNT(t.transaction_hash) AS trades_total, "
+        "       MAX(t.timestamp_ts) AS last_trade, "
+        "       AVG(t.size_usd) AS avg_trade_size, "
+        "       COALESCE(SUM(t.size_usd), 0) AS total_volume "
+        "FROM tracked_wallets w "
+        "LEFT JOIN trades t ON w.address = t.proxy_wallet "
+        "WHERE w.address = ? "
+        "GROUP BY w.address, w.notes, w.tier, w.active, w.tier_a_confidence, "
+        "         w.honeypot_flag, w.added_at, w.source",
+        [address],
+    ).fetchone()
+    if row is None or row[0] is None:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    return {"address": row[0]}  # incomplete — Task 5 will extend
 
 
 @app.get("/api/c2/features")
