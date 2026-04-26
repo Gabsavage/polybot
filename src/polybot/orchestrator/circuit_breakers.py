@@ -7,7 +7,11 @@ import structlog
 
 from polybot.db.connection import db_read_with_retry
 from polybot.orchestrator.audit_log import log_audit
-from polybot.orchestrator.kill_switches import set_kill_switch, is_component_enabled, _invalidate_cache
+from polybot.orchestrator.kill_switches import (
+    _invalidate_cache,
+    is_component_enabled,
+    set_kill_switch,
+)
 
 logger = structlog.get_logger()
 
@@ -49,14 +53,16 @@ class CircuitBreaker:
 
             if status == "failed":
                 self._indexer_failures[name] = self._indexer_failures.get(name, 0) + 1
-                if self._indexer_failures[name] >= FAILURE_THRESHOLD:
-                    if is_component_enabled(self.db_path, target):
-                        reason = f"{name}: {self._indexer_failures[name]} consecutive failures"
-                        set_kill_switch(
-                            self.db_path, target, enabled=True,
-                            reason=reason, actor="circuit_breaker",
-                        )
-                        logger.error("circuit_breaker_indexer", indexer=name, failures=self._indexer_failures[name])
+                failures = self._indexer_failures[name]
+                if failures >= FAILURE_THRESHOLD and is_component_enabled(self.db_path, target):
+                    reason = f"{name}: {failures} consecutive failures"
+                    set_kill_switch(
+                        self.db_path, target, enabled=True,
+                        reason=reason, actor="circuit_breaker",
+                    )
+                    logger.error(
+                        "circuit_breaker_indexer", indexer=name, failures=failures,
+                    )
             else:
                 self._indexer_failures[name] = 0
 
@@ -71,15 +77,16 @@ class CircuitBreaker:
         monthly_calls = db_read_with_retry(self.db_path, _read)
         estimated_cost = monthly_calls * LLM_COST_PER_CALL
 
-        if estimated_cost > LLM_MONTHLY_LIMIT:
-            if is_component_enabled(self.db_path, "c3"):
-                _invalidate_cache()
-                set_kill_switch(
-                    self.db_path, "c3", enabled=True,
-                    reason=f"LLM cost ${estimated_cost:.2f} > ${LLM_MONTHLY_LIMIT:.2f} limit",
-                    actor="circuit_breaker",
-                )
-                logger.error("circuit_breaker_llm_cost", estimated=estimated_cost, limit=LLM_MONTHLY_LIMIT)
+        if estimated_cost > LLM_MONTHLY_LIMIT and is_component_enabled(self.db_path, "c3"):
+            _invalidate_cache()
+            set_kill_switch(
+                self.db_path, "c3", enabled=True,
+                reason=f"LLM cost ${estimated_cost:.2f} > ${LLM_MONTHLY_LIMIT:.2f} limit",
+                actor="circuit_breaker",
+            )
+            logger.error(
+                "circuit_breaker_llm_cost", estimated=estimated_cost, limit=LLM_MONTHLY_LIMIT,
+            )
 
     def check_disk_usage(self) -> None:
         """Warn if disk usage exceeds threshold."""

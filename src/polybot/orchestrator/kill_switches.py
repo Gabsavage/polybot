@@ -53,9 +53,7 @@ def is_component_enabled(db_path: str, component: str) -> bool:
 
     if component in _cache:
         return False
-    if component in ALERT_COMPONENTS and "all_alerts" in _cache:
-        return False
-    return True
+    return not (component in ALERT_COMPONENTS and "all_alerts" in _cache)
 
 
 def set_kill_switch(

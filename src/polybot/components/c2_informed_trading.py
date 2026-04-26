@@ -7,7 +7,8 @@ from datetime import UTC, datetime
 import structlog
 
 from polybot.config import Settings
-from polybot.db.connection import connect as db_connect, db_write_with_retry
+from polybot.db.connection import connect as db_connect
+from polybot.db.connection import db_write_with_retry
 
 logger = structlog.get_logger()
 

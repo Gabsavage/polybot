@@ -1,6 +1,6 @@
 """Rate limits — throttle alert emission and API calls."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 
@@ -25,7 +25,7 @@ _digest_sent: set[tuple[str, str]] = set()
 
 def _utcnow() -> datetime:
     """Return current UTC time as a naive datetime (for DuckDB TIMESTAMP storage)."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def check_rate_limit(db_path: str, component: str) -> bool:
@@ -39,7 +39,7 @@ def check_rate_limit(db_path: str, component: str) -> bool:
     def _check(con):
         # First pass: detect any expired window
         any_expired = False
-        for window, max_count in limits.items():
+        for window, _max_count in limits.items():
             duration = WINDOW_DURATIONS[window]
             row = con.execute(
                 "SELECT count, window_start FROM rate_limit_counters "

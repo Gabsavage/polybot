@@ -13,7 +13,8 @@ from telegram.ext import (
 )
 
 from polybot.config import Settings
-from polybot.db.connection import connect as db_connect, db_write_with_retry
+from polybot.db.connection import connect as db_connect
+from polybot.db.connection import db_write_with_retry
 
 logger = structlog.get_logger()
 
@@ -362,7 +363,8 @@ class PolyBot:
         )
         await self.send_alert(
             "ops",
-            f"Kill switch <b>{target}</b> → {state_label}" + (f"\nRaison: {reason}" if reason else ""),
+            f"Kill switch <b>{target}</b> → {state_label}"
+            + (f"\nRaison: {reason}" if reason else ""),
         )
 
     async def _cmd_audit(
@@ -416,7 +418,7 @@ class PolyBot:
             "/risk &lt;slug&gt; — Analyse resolution risk d'un marché\n"
             "/recent [N] — N dernières alertes (défaut 5)\n"
             "/toggle shadow — Basculer shadow mode on/off\n"
-            "/toggle &lt;target&gt; on|off — Kill switch (c1, c2, c3, all_alerts, trades, markets, onchain, resolutions)\n"
+            "/toggle &lt;target&gt; on|off — Kill switch\n"
             "/audit [N] — Derniers N événements d'audit (défaut 10)\n"
             "/help — Cette aide",
             parse_mode="HTML",

@@ -9,7 +9,8 @@ import structlog
 
 from polybot.components.sizing import compute_size
 from polybot.config import Settings
-from polybot.db.connection import connect as db_connect, db_write_with_retry
+from polybot.db.connection import connect as db_connect
+from polybot.db.connection import db_write_with_retry
 from polybot.telegram.bot import PolyBot
 
 logger = structlog.get_logger()
