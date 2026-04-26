@@ -563,6 +563,39 @@ class TestSharedCexDeposit:
         assert ratio == 0.0
         assert source is None
 
+    def test_in_compute_score(self, c2, db_path):
+        """shared_cex_deposit fires → appears in features_passed, score incremented."""
+        _seed_market(db_path)
+        now = datetime.now(UTC)
+        for i, w in enumerate(["0xsc1", "0xsc2", "0xsc3"]):
+            _insert_trade_all(db_path, f"tx_sc_{i}", wallet=w, ts=now)
+        _insert_cex_funding(
+            db_path,
+            "0xsc1",
+            funded_by="0xhot",
+            funded_by_hop2="0xhot2",
+            cex_source="Binance",
+            deposit_address="0xdep_sc",
+            confidence=0.9,
+            method="hop2_hot_wallet",
+        )
+        _insert_cex_funding(
+            db_path,
+            "0xsc2",
+            funded_by="0xhot",
+            funded_by_hop2="0xhot2",
+            cex_source="Binance",
+            deposit_address="0xdep_sc",
+            confidence=0.9,
+            method="hop2_hot_wallet",
+        )
+        result = c2.compute_score("cond1")
+        assert "shared_cex_deposit" in result["features"]
+        assert result["features"]["shared_cex_deposit"] is True
+        assert "shared_cex_deposit" in result["features_passed"]
+        assert result["raw_values"]["shared_cex_deposit"] == pytest.approx(2 / 3, abs=0.01)
+        assert result["raw_values"]["shared_cex_deposit_source"] == "Binance"
+
 
 # --- Alert format ---
 

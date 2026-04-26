@@ -321,7 +321,7 @@ class InformedTradingDetector:
     # --- Scoring ---
 
     def compute_score(self, condition_id: str) -> dict:
-        """Compute all 7 features + score for a market."""
+        """Compute all 8 features + score for a market."""
         fresh = self.compute_fresh_wallets_ratio(condition_id)
         top5 = self.compute_top5_concentration(condition_id)
         tte = self.compute_time_to_event(condition_id)
@@ -329,6 +329,7 @@ class InformedTradingDetector:
         momentum = self.compute_momentum_1h(condition_id)
         zscore = self.compute_volume_zscore(condition_id)
         dominance = self.compute_single_dominance(condition_id)
+        cex_deposit_ratio, cex_source = self.compute_shared_cex_deposit(condition_id)
 
         features = {
             "fresh_wallets": fresh > 0.50,
@@ -338,6 +339,7 @@ class InformedTradingDetector:
             "momentum_1h": abs(momentum) > 0.05,
             "volume_zscore": zscore > 3.0,
             "single_dominance": dominance > 0.60,
+            "shared_cex_deposit": cex_deposit_ratio > 0.30,
         }
         raw_values = {
             "fresh_wallets": round(fresh, 4),
@@ -347,6 +349,8 @@ class InformedTradingDetector:
             "momentum_1h": round(momentum, 4),
             "volume_zscore": round(zscore, 2),
             "single_dominance": round(dominance, 4),
+            "shared_cex_deposit": round(cex_deposit_ratio, 4),
+            "shared_cex_deposit_source": cex_source,
         }
         score = sum(features.values())
         features_passed = [k for k, v in features.items() if v]
