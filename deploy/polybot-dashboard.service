@@ -1,0 +1,19 @@
+[Unit]
+Description=Polybot Dashboard API
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/polybot
+Environment=PYTHONPATH=/root/polybot/src
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/root/polybot/.env
+ExecStart=/root/polybot/.venv/bin/uvicorn polybot.dashboard.api:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

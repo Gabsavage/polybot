@@ -1,0 +1,15 @@
+:3000 {
+    basicauth {
+        polybot {$DASHBOARD_BCRYPT_HASH}
+    }
+
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    handle {
+        root * /root/polybot/dashboard/dist
+        file_server
+        try_files {path} /index.html
+    }
+}
