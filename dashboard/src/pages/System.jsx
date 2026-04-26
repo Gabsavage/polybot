@@ -121,7 +121,7 @@ export default function System() {
               return (
                 <GlassCard key={a.id} className="!p-4">
                   <div className="flex items-start gap-3">
-                    <Icon size={16} className="text-accent-orange mt-0.5" />
+                    <Icon size={16} className="text-accent-blue mt-0.5" />
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">

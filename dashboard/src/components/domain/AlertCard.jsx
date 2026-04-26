@@ -60,7 +60,7 @@ export default function AlertCard({ alert }) {
             e.stopPropagation();
             navigate(`/wallets/${alert.wallet_address}`);
           }}
-          className="text-text-secondary hover:text-accent-orange transition-colors"
+          className="text-text-secondary hover:text-accent-blue transition-colors"
         >
           <AddressDisplay address={alert.wallet_address} />
         </button>
@@ -70,7 +70,7 @@ export default function AlertCard({ alert }) {
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 text-text-secondary hover:text-accent-orange transition-colors"
+            className="inline-flex items-center gap-1 text-text-secondary hover:text-accent-blue transition-colors"
           >
             Polymarket <ExternalLink size={11} />
           </a>

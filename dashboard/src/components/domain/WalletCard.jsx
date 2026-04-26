@@ -39,7 +39,7 @@ export default function WalletCard({ wallet }) {
               </span>
             )}
             {wallet.tier === "A" && (
-              <span className="text-xs px-2 py-0.5 bg-accent-orange/10 text-accent-orange rounded">
+              <span className="text-xs px-2 py-0.5 bg-accent-blue/10 text-accent-blue rounded">
                 Tier A
               </span>
             )}

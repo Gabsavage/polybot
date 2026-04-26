@@ -65,10 +65,10 @@ export default function Performance() {
       <h1 className="text-4xl font-light tracking-tight">Performance</h1>
 
       {insufficient && (
-        <div className="bg-accent-orange/10 border border-accent-orange/30 rounded-card p-4 flex items-start gap-3">
-          <AlertTriangle size={18} className="text-accent-orange mt-0.5 flex-shrink-0" />
+        <div className="bg-accent-blue/10 border border-accent-blue/30 rounded-card p-4 flex items-start gap-3">
+          <AlertTriangle size={18} className="text-accent-blue mt-0.5 flex-shrink-0" />
           <div className="text-sm">
-            <div className="font-medium text-accent-orange">Échantillon insuffisant</div>
+            <div className="font-medium text-accent-blue">Échantillon insuffisant</div>
             <div className="text-text-secondary mt-1">
               {totalResolved}/30 minimum. Résultats indicatifs.
             </div>

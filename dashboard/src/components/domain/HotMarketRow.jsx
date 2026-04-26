@@ -31,7 +31,7 @@ export default function HotMarketRow({ market }) {
             href={polymarketUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-text-tertiary hover:text-accent-orange transition-colors"
+            className="text-text-tertiary hover:text-accent-blue transition-colors"
           >
             <ExternalLink size={14} />
           </a>

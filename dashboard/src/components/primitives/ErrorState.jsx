@@ -16,7 +16,7 @@ export default function ErrorState({ error, onRetry }) {
       {onRetry && (
         <button
           onClick={onRetry}
-          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-accent-orange/10 text-accent-orange hover:bg-accent-orange/20 rounded-lg text-sm font-medium transition-colors"
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-accent-blue/10 text-accent-blue hover:bg-accent-blue/20 rounded-lg text-sm font-medium transition-colors"
         >
           <RefreshCw size={14} />
           Réessayer

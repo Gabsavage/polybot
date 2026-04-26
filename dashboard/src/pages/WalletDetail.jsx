@@ -28,7 +28,7 @@ export default function WalletDetail() {
       return (
         <div className="flex flex-col items-center justify-center py-16 gap-4">
           <h1 className="text-xl text-text-primary">Wallet non suivi</h1>
-          <Link to="/wallets" className="text-accent-orange hover:underline inline-flex items-center gap-1">
+          <Link to="/wallets" className="text-accent-blue hover:underline inline-flex items-center gap-1">
             <ArrowLeft size={14} /> Retour aux wallets
           </Link>
         </div>
@@ -42,7 +42,7 @@ export default function WalletDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Link to="/wallets" className="text-sm text-text-secondary hover:text-accent-orange inline-flex items-center gap-1 w-fit">
+      <Link to="/wallets" className="text-sm text-text-secondary hover:text-accent-blue inline-flex items-center gap-1 w-fit">
         <ArrowLeft size={14} /> Retour
       </Link>
 
@@ -54,7 +54,7 @@ export default function WalletDetail() {
               <AddressDisplay address={data.address} truncate={false} />
             </div>
             <div className="mt-3 flex flex-wrap gap-2 text-xs">
-              <span className="px-2 py-0.5 bg-accent-orange/10 text-accent-orange rounded">
+              <span className="px-2 py-0.5 bg-accent-blue/10 text-accent-blue rounded">
                 Tier {data.tier}
               </span>
               {data.tier_a_confidence != null && (
@@ -71,7 +71,7 @@ export default function WalletDetail() {
             href={polymarketUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-accent-orange/10 text-accent-orange hover:bg-accent-orange/20 rounded-lg text-sm font-medium transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-accent-blue/10 text-accent-blue hover:bg-accent-blue/20 rounded-lg text-sm font-medium transition-colors"
           >
             Voir sur Polymarket <ExternalLink size={14} />
           </a>

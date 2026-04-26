@@ -54,7 +54,7 @@ export default function TopBar() {
     okCount === total
       ? "text-pnl-positive"
       : okCount >= total - 1
-      ? "text-accent-orange"
+      ? "text-accent-blue"
       : "text-pnl-negative";
 
   function refreshAll() {

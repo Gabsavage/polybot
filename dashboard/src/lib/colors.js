@@ -15,7 +15,7 @@ export function statusColor(status) {
       return "text-pnl-negative";
     case "running":
     case "pending":
-      return "text-accent-orange";
+      return "text-accent-blue";
     default:
       return "text-text-secondary";
   }
@@ -30,7 +30,7 @@ export function sideColor(side) {
 }
 
 export function componentColor(component) {
-  if (component === "C1") return "bg-accent-orange/20 text-accent-orange";
+  if (component === "C1") return "bg-accent-blue/20 text-accent-blue";
   if (component === "C2") return "bg-accent-violet/20 text-accent-violet";
   return "bg-white/5 text-text-secondary";
 }

@@ -102,7 +102,7 @@ export default function Overview() {
         <div className="lg:col-span-3 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Dernières alertes</h2>
-            <Link to="/alerts" className="text-sm text-accent-orange hover:underline inline-flex items-center gap-1">
+            <Link to="/alerts" className="text-sm text-accent-blue hover:underline inline-flex items-center gap-1">
               Voir tout <ArrowRight size={14} />
             </Link>
           </div>

@@ -5,8 +5,9 @@
   --color-bg-card: #12121a;
   --color-bg-card-hover: #16161f;
   --color-bg-sidebar: #0e0e14;
-  --color-accent-orange: #f97316;
+  --color-accent-blue: #4f70ff;
   --color-accent-violet: #a855f7;
+  --color-accent-cyan: #22d3ee;
   --color-pnl-positive: #22c55e;
   --color-pnl-negative: #ef4444;
   --color-text-primary: #f1f1f4;
@@ -22,9 +23,9 @@
     font-family: var(--font-sans);
     color: var(--color-text-primary);
     background:
-      radial-gradient(ellipse 60% 50% at 10% 0%, rgba(168, 85, 247, 0.08), transparent 60%),
-      radial-gradient(ellipse 60% 50% at 90% 100%, rgba(249, 115, 22, 0.04), transparent 60%),
-      var(--color-bg-primary);
+      radial-gradient(ellipse 60% 50% at 10% 0%, rgba(79, 112, 255, 0.08), transparent 60%),
+      radial-gradient(ellipse 60% 50% at 90% 100%, rgba(168, 85, 247, 0.05), transparent 60%);
+    background-color: var(--color-bg-primary);
     background-attachment: fixed;
   }
 }
@@ -48,7 +49,7 @@
     border-radius: var(--radius-card);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.08),
-      0 0 40px rgba(168, 85, 247, 0.06),
+      0 0 40px rgba(79, 112, 255, 0.08),
       0 8px 32px rgba(0, 0, 0, 0.4);
   }
   .row-hover {
@@ -61,10 +62,10 @@
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
   .card-hover:hover {
-    border-color: rgba(168, 85, 247, 0.25);
+    border-color: rgba(79, 112, 255, 0.3);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.08),
-      0 0 24px rgba(168, 85, 247, 0.08),
+      0 0 24px rgba(79, 112, 255, 0.1),
       0 4px 24px rgba(0, 0, 0, 0.3);
   }
 }
