@@ -266,6 +266,10 @@ class ResolutionRiskScorer:
             red_flags = cached["red_flags"]
             was_cached = True
         else:
+            from polybot.orchestrator.kill_switches import is_component_enabled
+            if not is_component_enabled(self.db_path, "c3"):
+                logger.info("c3_killed_rules_only", condition_id=condition_id[:16])
+                return self.score_market_fallback(condition_id, market)
             try:
                 result = self.call_haiku(market)
                 llm_score = result["ambiguity_score"]
