@@ -18,8 +18,7 @@ def _next_alert_id(con) -> str:
     today = datetime.now(UTC).strftime("%Y%m%d")
     prefix = f"AL_{today}_"
     row = con.execute(
-        "SELECT alert_id FROM alerts "
-        "WHERE alert_id LIKE ? ORDER BY alert_id DESC LIMIT 1",
+        "SELECT alert_id FROM alerts WHERE alert_id LIKE ? ORDER BY alert_id DESC LIMIT 1",
         [f"{prefix}%"],
     ).fetchone()
     seq = int(row[0].split("_")[-1]) + 1 if row else 1
@@ -107,9 +106,18 @@ class InformedTradingDetector:
         con.close()
 
         columns = [
-            "condition_id", "title", "slug", "event_slug", "end_date",
-            "volume_24h", "liquidity_usd", "volume_cumulative_usd",
-            "category", "vol_1h", "price_now", "price_1h_ago",
+            "condition_id",
+            "title",
+            "slug",
+            "event_slug",
+            "end_date",
+            "volume_24h",
+            "liquidity_usd",
+            "volume_cumulative_usd",
+            "category",
+            "vol_1h",
+            "price_now",
+            "price_1h_ago",
         ]
         return [dict(zip(columns, row, strict=False)) for row in rows]
 
@@ -267,6 +275,49 @@ class InformedTradingDetector:
         con.close()
         return float(row[0]) if row and row[0] is not None else 0.0
 
+    def compute_shared_cex_deposit(self, condition_id: str) -> tuple[float, str | None]:
+        """Ratio of active wallets sharing the most common CEX deposit address."""
+        con = db_connect(self.db_path, read_only=True)
+        total_row = con.execute(
+            """
+            SELECT COUNT(DISTINCT proxy_wallet)
+            FROM trades_all
+            WHERE condition_id = ? AND proxy_wallet IS NOT NULL
+            """,
+            [condition_id],
+        ).fetchone()
+        total = int(total_row[0]) if total_row else 0
+        if total == 0:
+            con.close()
+            return 0.0, None
+
+        row = con.execute(
+            """
+            WITH active_wallets AS (
+                SELECT DISTINCT proxy_wallet
+                FROM trades_all
+                WHERE condition_id = ? AND proxy_wallet IS NOT NULL
+            ),
+            funded AS (
+                SELECT aw.proxy_wallet, cfm.deposit_address, cfm.cex_source
+                FROM active_wallets aw
+                JOIN cex_funding_map cfm ON aw.proxy_wallet = cfm.wallet_address
+                WHERE cfm.deposit_address IS NOT NULL
+            )
+            SELECT deposit_address, cex_source, COUNT(*) as cnt
+            FROM funded
+            GROUP BY deposit_address, cex_source
+            ORDER BY cnt DESC
+            LIMIT 1
+            """,
+            [condition_id],
+        ).fetchone()
+        con.close()
+
+        if not row:
+            return 0.0, None
+        return row[2] / total, row[1]
+
     # --- Scoring ---
 
     def compute_score(self, condition_id: str) -> dict:
@@ -419,9 +470,7 @@ class InformedTradingDetector:
             "AND emitted_at > CURRENT_TIMESTAMP - INTERVAL 1 HOUR"
         ).fetchone()[0]
         daily = con.execute(
-            "SELECT COUNT(*) FROM alerts "
-            "WHERE component = 'C2' "
-            "AND emitted_at >= CURRENT_DATE"
+            "SELECT COUNT(*) FROM alerts WHERE component = 'C2' AND emitted_at >= CURRENT_DATE"
         ).fetchone()[0]
         con.close()
         return hourly < 2 and daily < 5
@@ -437,6 +486,7 @@ class InformedTradingDetector:
         risk_score: float = 0.3,
     ) -> str:
         """Insert C2 alert into alerts table. Returns alert_id."""
+
         def _do(con):
             aid = _next_alert_id(con)
             con.execute(
@@ -469,8 +519,13 @@ class InformedTradingDetector:
     # --- Alert formatting ---
 
     def _format_alert(
-        self, market: dict, result: dict, alignment: dict,
-        risk_score: float, risk_category: str, alert_id: str,
+        self,
+        market: dict,
+        result: dict,
+        alignment: dict,
+        risk_score: float,
+        risk_category: str,
+        alert_id: str,
     ) -> str:
         """Format C2 alert message for Telegram."""
         title = market.get("title") or market["condition_id"][:40]
@@ -499,25 +554,17 @@ class InformedTradingDetector:
             if f == "fresh_wallets":
                 feature_lines.append(f"  ✓ Fresh wallets : {raw['fresh_wallets']:.0%}")
             elif f == "top5_concentration":
-                feature_lines.append(
-                    f"  ✓ Top-5 concentration : {raw['top5_concentration']:.0%}"
-                )
+                feature_lines.append(f"  ✓ Top-5 concentration : {raw['top5_concentration']:.0%}")
             elif f == "time_to_event":
-                feature_lines.append(
-                    f"  ✓ {raw['time_to_event']:.0f}h avant résolution"
-                )
+                feature_lines.append(f"  ✓ {raw['time_to_event']:.0f}h avant résolution")
             elif f == "niche_market":
                 feature_lines.append("  ✓ Niche market")
             elif f == "momentum_1h":
-                feature_lines.append(
-                    f"  ✓ Momentum 1h : {raw['momentum_1h']:+.1%}"
-                )
+                feature_lines.append(f"  ✓ Momentum 1h : {raw['momentum_1h']:+.1%}")
             elif f == "volume_zscore":
                 feature_lines.append(f"  ✓ Volume Z-score : {zscore:.1f}")
             elif f == "single_dominance":
-                feature_lines.append(
-                    f"  ✓ Single dominance : {raw['single_dominance']:.0%}"
-                )
+                feature_lines.append(f"  ✓ Single dominance : {raw['single_dominance']:.0%}")
 
         # Alignment
         a_score = alignment.get("alignment_score")
@@ -542,9 +589,7 @@ class InformedTradingDetector:
         # Market link
         event_slug = market.get("event_slug")
         link = (
-            f"https://polymarket.com/event/{event_slug}"
-            if event_slug
-            else "https://polymarket.com"
+            f"https://polymarket.com/event/{event_slug}" if event_slug else "https://polymarket.com"
         )
 
         parts = [
@@ -600,6 +645,7 @@ class InformedTradingDetector:
                 continue
 
             from polybot.orchestrator.rate_limits import check_rate_limit as check_rl
+
             if not check_rl(self.db_path, "c2"):
                 logger.info("c2_rate_limit_reached")
                 break
@@ -620,7 +666,11 @@ class InformedTradingDetector:
                     logger.warning("c2_c3_scoring_failed", condition_id=cid[:16])
 
             alert_id = self._insert_alert(
-                cid, market, result, alignment, risk_score,
+                cid,
+                market,
+                result,
+                alignment,
+                risk_score,
             )
 
             alert = {
@@ -671,19 +721,20 @@ class InformedTradingDetector:
 
         event_slug = alert["market"].get("event_slug")
         market_url = (
-            f"https://polymarket.com/event/{event_slug}"
-            if event_slug
-            else "https://polymarket.com"
+            f"https://polymarket.com/event/{event_slug}" if event_slug else "https://polymarket.com"
         )
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📊 Marché", url=market_url)],
-        ])
+        keyboard = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("📊 Marché", url=market_url)],
+            ]
+        )
 
         # Route based on shadow mode
         topic = "ops" if self.settings.SHADOW_MODE else "alerts"
         msg_id = await self.bot.send_alert(topic, message, reply_markup=keyboard)
 
         from polybot.orchestrator.rate_limits import increment_counter
+
         increment_counter(self.db_path, "c2")
 
         if msg_id:

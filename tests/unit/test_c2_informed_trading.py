@@ -111,7 +111,9 @@ class TestHotMarketVolSpike:
         # Insert $500 in last hour → 5x avg → spike
         for i in range(5):
             _insert_trade_all(
-                db_path, f"tx_spike_{i}", size_usd=100.0,
+                db_path,
+                f"tx_spike_{i}",
+                size_usd=100.0,
                 ts=now - timedelta(minutes=i * 10),
             )
         hot = c2.get_hot_markets()
@@ -136,13 +138,19 @@ class TestHotMarketPriceMove:
         # Trades ~1h ago at price 0.50
         for i in range(3):
             _insert_trade_all(
-                db_path, f"tx_old_{i}", size_usd=200.0, price=0.50,
+                db_path,
+                f"tx_old_{i}",
+                size_usd=200.0,
+                price=0.50,
                 ts=now - timedelta(minutes=60 + i),
             )
         # Recent trades at price 0.65 (30% move)
         for i in range(3):
             _insert_trade_all(
-                db_path, f"tx_new_{i}", size_usd=200.0, price=0.65,
+                db_path,
+                f"tx_new_{i}",
+                size_usd=200.0,
+                price=0.65,
                 ts=now - timedelta(minutes=i),
             )
         hot = c2.get_hot_markets()
@@ -168,8 +176,11 @@ class TestFeatureFreshWallets:
         now = datetime.now(UTC)
         for i in range(5):
             _insert_trade_all(
-                db_path, f"tx_fresh_{i}", wallet=f"0xfresh{i}",
-                size_usd=100.0, ts=now - timedelta(minutes=i * 5),
+                db_path,
+                f"tx_fresh_{i}",
+                wallet=f"0xfresh{i}",
+                size_usd=100.0,
+                ts=now - timedelta(minutes=i * 5),
             )
         ratio = c2.compute_fresh_wallets_ratio("cond1")
         assert ratio >= 0.9  # All are fresh (first seen = just now)
@@ -183,14 +194,20 @@ class TestFeatureTop5Concentration:
         # 5 big traders
         for i in range(5):
             _insert_trade_all(
-                db_path, f"tx_big_{i}", wallet=f"0xbig{i}",
-                size_usd=180.0, ts=now - timedelta(minutes=i),
+                db_path,
+                f"tx_big_{i}",
+                wallet=f"0xbig{i}",
+                size_usd=180.0,
+                ts=now - timedelta(minutes=i),
             )
         # 10 small traders
         for i in range(10):
             _insert_trade_all(
-                db_path, f"tx_small_{i}", wallet=f"0xsmall{i}",
-                size_usd=10.0, ts=now - timedelta(minutes=i),
+                db_path,
+                f"tx_small_{i}",
+                wallet=f"0xsmall{i}",
+                size_usd=10.0,
+                ts=now - timedelta(minutes=i),
             )
         conc = c2.compute_top5_concentration("cond1")
         # 5*180 = 900, 10*10 = 100, total = 1000, top5 = 900/1000 = 0.9
@@ -203,13 +220,19 @@ class TestFeatureSingleDominance:
         _seed_market(db_path)
         now = datetime.now(UTC)
         _insert_trade_all(
-            db_path, "tx_dom", wallet="0xwhale",
-            size_usd=700.0, ts=now,
+            db_path,
+            "tx_dom",
+            wallet="0xwhale",
+            size_usd=700.0,
+            ts=now,
         )
         for i in range(3):
             _insert_trade_all(
-                db_path, f"tx_other_{i}", wallet=f"0xother{i}",
-                size_usd=100.0, ts=now - timedelta(minutes=i + 1),
+                db_path,
+                f"tx_other_{i}",
+                wallet=f"0xother{i}",
+                size_usd=100.0,
+                ts=now - timedelta(minutes=i + 1),
             )
         dom = c2.compute_single_dominance("cond1")
         assert dom == pytest.approx(0.7, abs=0.01)
@@ -224,14 +247,18 @@ class TestScoreComposite:
         now = datetime.now(UTC)
         end = now + timedelta(hours=24)
         _seed_market(
-            db_path, volume_24h=100.0,
+            db_path,
+            volume_24h=100.0,
             volume_cumulative=30_000.0,  # niche
             end_date=end,  # time_to_event < 48
         )
         # All trades from one fresh wallet → fresh_wallets + single_dominance
         _insert_trade_all(
-            db_path, "tx_s1", wallet="0xwhale",
-            size_usd=500.0, ts=now - timedelta(minutes=2),
+            db_path,
+            "tx_s1",
+            wallet="0xwhale",
+            size_usd=500.0,
+            ts=now - timedelta(minutes=2),
         )
         result = c2.compute_score("cond1")
         # Should pass: niche_market (30K < 50K), time_to_event (24h < 48h),
@@ -243,15 +270,19 @@ class TestScoreComposite:
         now = datetime.now(UTC)
         end = now + timedelta(hours=24)
         _seed_market(
-            db_path, volume_24h=100.0,
+            db_path,
+            volume_24h=100.0,
             volume_cumulative=100_000.0,  # NOT niche
             end_date=end,
         )
         # Spread volume across many wallets
         for i in range(10):
             _insert_trade_all(
-                db_path, f"tx_sp_{i}", wallet=f"0xwallet{i}",
-                size_usd=50.0, ts=now - timedelta(minutes=i),
+                db_path,
+                f"tx_sp_{i}",
+                wallet=f"0xwallet{i}",
+                size_usd=50.0,
+                ts=now - timedelta(minutes=i),
             )
         result = c2.compute_score("cond1")
         # time_to_event passes, fresh_wallets passes, but
@@ -268,7 +299,9 @@ class TestDedup:
     def test_dedup_blocks_within_6h(self, c2, db_path):
         """Alert emitted 3h ago on same market → blocked."""
         _insert_alert(
-            db_path, "AL_TEST_0001", condition_id="cond1",
+            db_path,
+            "AL_TEST_0001",
+            condition_id="cond1",
             emitted_at=datetime.now(UTC) - timedelta(hours=3),
         )
         assert c2.check_dedup("cond1") is False
@@ -276,7 +309,9 @@ class TestDedup:
     def test_dedup_passes_after_6h(self, c2, db_path):
         """Alert emitted 7h ago → passes."""
         _insert_alert(
-            db_path, "AL_TEST_0001", condition_id="cond1",
+            db_path,
+            "AL_TEST_0001",
+            condition_id="cond1",
             emitted_at=datetime.now(UTC) - timedelta(hours=7),
         )
         assert c2.check_dedup("cond1") is True
@@ -291,7 +326,9 @@ class TestRateLimit:
         now = datetime.now(UTC)
         _insert_alert(db_path, "AL_T1", emitted_at=now - timedelta(minutes=30))
         _insert_alert(
-            db_path, "AL_T2", condition_id="cond2",
+            db_path,
+            "AL_T2",
+            condition_id="cond2",
             emitted_at=now - timedelta(minutes=15),
         )
         assert c2.check_rate_limit() is False
@@ -301,7 +338,9 @@ class TestRateLimit:
         now = datetime.now(UTC)
         for i in range(5):
             _insert_alert(
-                db_path, f"AL_D{i}", condition_id=f"cond_d{i}",
+                db_path,
+                f"AL_D{i}",
+                condition_id=f"cond_d{i}",
                 emitted_at=now - timedelta(hours=i + 2),  # spread across hours
             )
         assert c2.check_rate_limit() is False
@@ -311,11 +350,15 @@ class TestRateLimit:
         now = datetime.now(UTC)
         _insert_alert(db_path, "AL_U1", emitted_at=now - timedelta(minutes=30))
         _insert_alert(
-            db_path, "AL_U2", condition_id="cond2",
+            db_path,
+            "AL_U2",
+            condition_id="cond2",
             emitted_at=now - timedelta(hours=2),
         )
         _insert_alert(
-            db_path, "AL_U3", condition_id="cond3",
+            db_path,
+            "AL_U3",
+            condition_id="cond3",
             emitted_at=now - timedelta(hours=3),
         )
         assert c2.check_rate_limit() is True
@@ -349,14 +392,21 @@ class TestAlignment:
         # Trades 4h ago at price 0.50
         for i in range(3):
             _insert_trade_all(
-                db_path, f"tx_4h_{i}", size_usd=100.0, price=0.50,
+                db_path,
+                f"tx_4h_{i}",
+                size_usd=100.0,
+                price=0.50,
                 ts=now - timedelta(hours=4, minutes=i),
             )
         # Recent BUY trades at price 0.525 (+5%)
         for i in range(5):
             _insert_trade_all(
-                db_path, f"tx_now_{i}", wallet=f"0xbuyer{i}",
-                side="BUY", size_usd=200.0, price=0.525,
+                db_path,
+                f"tx_now_{i}",
+                wallet=f"0xbuyer{i}",
+                side="BUY",
+                size_usd=200.0,
+                price=0.525,
                 ts=now - timedelta(minutes=i),
             )
         result = c2.compute_alignment("cond1")
@@ -372,14 +422,21 @@ class TestAlignment:
         # Trades 4h ago at price 0.60
         for i in range(3):
             _insert_trade_all(
-                db_path, f"tx_4h_{i}", size_usd=100.0, price=0.60,
+                db_path,
+                f"tx_4h_{i}",
+                size_usd=100.0,
+                price=0.60,
                 ts=now - timedelta(hours=4, minutes=i),
             )
         # Recent BUY trades at price 0.58 (-3.3%)
         for i in range(5):
             _insert_trade_all(
-                db_path, f"tx_now_{i}", wallet=f"0xbuyer{i}",
-                side="BUY", size_usd=200.0, price=0.58,
+                db_path,
+                f"tx_now_{i}",
+                wallet=f"0xbuyer{i}",
+                side="BUY",
+                size_usd=200.0,
+                price=0.58,
                 ts=now - timedelta(minutes=i),
             )
         result = c2.compute_alignment("cond1")
@@ -392,13 +449,19 @@ class TestAlignment:
         # Trades 4h ago and now at nearly same price
         for i in range(3):
             _insert_trade_all(
-                db_path, f"tx_4h_{i}", size_usd=100.0, price=0.50,
+                db_path,
+                f"tx_4h_{i}",
+                size_usd=100.0,
+                price=0.50,
                 ts=now - timedelta(hours=4, minutes=i),
             )
         for i in range(3):
             _insert_trade_all(
-                db_path, f"tx_now_{i}", side="BUY",
-                size_usd=100.0, price=0.502,
+                db_path,
+                f"tx_now_{i}",
+                side="BUY",
+                size_usd=100.0,
+                price=0.502,
                 ts=now - timedelta(minutes=i),
             )
         result = c2.compute_alignment("cond1")
@@ -409,11 +472,96 @@ class TestAlignment:
         _seed_market(db_path)
         now = datetime.now(UTC)
         _insert_trade_all(
-            db_path, "tx_now", side="BUY",
-            size_usd=100.0, ts=now,
+            db_path,
+            "tx_now",
+            side="BUY",
+            size_usd=100.0,
+            ts=now,
         )
         result = c2.compute_alignment("cond1")
         assert result["alignment_score"] is None
+
+
+def _insert_cex_funding(
+    db_path: str,
+    wallet: str,
+    funded_by: str | None = None,
+    funded_by_hop2: str | None = None,
+    cex_source: str | None = None,
+    deposit_address: str | None = None,
+    confidence: float = 0.0,
+    method: str | None = None,
+):
+    con = duckdb.connect(db_path)
+    con.execute(
+        "INSERT INTO cex_funding_map "
+        "(wallet_address, funded_by, funded_by_hop2, cex_source, "
+        "deposit_address, confidence, method) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [wallet, funded_by, funded_by_hop2, cex_source, deposit_address, confidence, method],
+    )
+    con.close()
+
+
+class TestSharedCexDeposit:
+    def test_above_threshold(self, c2, db_path):
+        """2/3 wallets share deposit_address → ratio 0.67 > 0.30 → True."""
+        _seed_market(db_path)
+        now = datetime.now(UTC)
+        for i, w in enumerate(["0xw1", "0xw2", "0xw3"]):
+            _insert_trade_all(db_path, f"tx_cex_{i}", wallet=w, ts=now)
+        _insert_cex_funding(
+            db_path,
+            "0xw1",
+            funded_by="0xhot",
+            funded_by_hop2="0xhot2",
+            cex_source="Binance",
+            deposit_address="0xdeposit1",
+            confidence=0.9,
+            method="hop2_hot_wallet",
+        )
+        _insert_cex_funding(
+            db_path,
+            "0xw2",
+            funded_by="0xhot",
+            funded_by_hop2="0xhot2",
+            cex_source="Binance",
+            deposit_address="0xdeposit1",
+            confidence=0.9,
+            method="hop2_hot_wallet",
+        )
+        ratio, source = c2.compute_shared_cex_deposit("cond1")
+        assert ratio == pytest.approx(2 / 3, abs=0.01)
+        assert source == "Binance"
+
+    def test_below_threshold(self, c2, db_path):
+        """1/5 wallets has deposit_address → ratio 0.20 < 0.30 → False."""
+        _seed_market(db_path)
+        now = datetime.now(UTC)
+        for i in range(5):
+            _insert_trade_all(db_path, f"tx_bt_{i}", wallet=f"0xbt{i}", ts=now)
+        _insert_cex_funding(
+            db_path,
+            "0xbt0",
+            funded_by="0xhot",
+            funded_by_hop2="0xhot2",
+            cex_source="Coinbase",
+            deposit_address="0xdep_cb",
+            confidence=0.9,
+            method="hop2_hot_wallet",
+        )
+        ratio, source = c2.compute_shared_cex_deposit("cond1")
+        assert ratio == pytest.approx(1 / 5, abs=0.01)
+        assert source == "Coinbase"
+
+    def test_no_funding_data(self, c2, db_path):
+        """No cex_funding_map rows → ratio 0.0, source None."""
+        _seed_market(db_path)
+        now = datetime.now(UTC)
+        _insert_trade_all(db_path, "tx_nf_0", wallet="0xnf1", ts=now)
+        ratio, source = c2.compute_shared_cex_deposit("cond1")
+        assert ratio == 0.0
+        assert source is None
 
 
 # --- Alert format ---
@@ -446,8 +594,12 @@ class TestAlertFormat:
         alignment = {"alignment_score": 1, "momentum_4h": 0.05, "direction": "BUY"}
 
         msg = c2._format_alert(
-            market=market, result=result, alignment=alignment,
-            risk_score=0.3, risk_category="MEDIUM", alert_id="AL_TEST_0001",
+            market=market,
+            result=result,
+            alignment=alignment,
+            risk_score=0.3,
+            risk_category="MEDIUM",
+            alert_id="AL_TEST_0001",
         )
         assert "C2" in msg
         assert "Will X happen?" in msg
@@ -462,8 +614,12 @@ class TestAlertFormat:
 
 
 def _insert_full_alert(
-    db_path: str, alert_id: str, condition_id: str = "cond1",
-    side: str = "BUY", price: float = 0.65, size_suggested: float = 20.0,
+    db_path: str,
+    alert_id: str,
+    condition_id: str = "cond1",
+    side: str = "BUY",
+    price: float = 0.65,
+    size_suggested: float = 20.0,
     component: str = "C1",
 ):
     con = duckdb.connect(db_path)
@@ -477,8 +633,10 @@ def _insert_full_alert(
 
 
 def _insert_resolution(
-    db_path: str, condition_id: str = "cond1",
-    settled_outcome: str = "YES", final_price: float = 1.0,
+    db_path: str,
+    condition_id: str = "cond1",
+    settled_outcome: str = "YES",
+    final_price: float = 1.0,
 ):
     con = duckdb.connect(db_path)
     con.execute(
@@ -511,8 +669,7 @@ class TestAlertOutcomes:
     def test_resolved_incorrect(self, db_path):
         """BUY @ 0.65, resolved NO → incorrect, P&L = -$20."""
         _insert_full_alert(db_path, "AL_T2", price=0.65, size_suggested=20.0)
-        _insert_resolution(db_path, condition_id="cond1", settled_outcome="NO",
-                           final_price=0.0)
+        _insert_resolution(db_path, condition_id="cond1", settled_outcome="NO", final_price=0.0)
         count = log_alert_outcomes(db_path)
         assert count == 1
 
@@ -533,8 +690,7 @@ class TestAlertOutcomes:
 
         con = duckdb.connect(db_path, read_only=True)
         row = con.execute(
-            "SELECT resolution_outcome FROM alert_outcomes "
-            "WHERE alert_id = 'AL_T3'"
+            "SELECT resolution_outcome FROM alert_outcomes WHERE alert_id = 'AL_T3'"
         ).fetchone()
         con.close()
         assert row[0] == "PENDING"
