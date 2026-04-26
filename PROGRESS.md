@@ -1,5 +1,81 @@
 # Polymarket Bot — Progress
 
+## 2026-04-27 — M8-M10 déployés, dashboard v2 shipped
+
+### M7-lite — Wallet Scoring (2026-04-25)
+- score_tier_a.py : 15 wallets scorés
+  - Erasmus démoté (0/13 win rate, -$82K P&L)
+  - 9 wallets avec 0 trades résolus (données insuffisantes)
+  - aenews2, extractive-manatee, TheMangler positifs (petit échantillon)
+- scan_new_sharps.py : funnel 33K wallets → 825 filtrés → 14 candidats (score ≥7)
+- lookup_candidates.py : Data API deep-dive sur top 5 — aucun candidat clair (bots sports volume-heavy)
+- À relancer dans 2 semaines avec plus de données
+
+### M8-A — Orchestrateur (2026-04-26)
+- Kill switches : 8 targets (c1, c2, c3, all_alerts, trades, markets, onchain, resolutions)
+- Rate limits centralisés : C1 10/h 40/j, C2 2/h 5/j, /risk 20/h, LLM 50/h
+- Circuit breakers : indexer health (3 fails → auto-kill), LLM cost ($3/mois), disk 80%
+- Audit log : événements persistés, commande /audit
+- Migration 007 (kill_switches, rate_limit_counters, audit_log recreated)
+
+### M8-C — Rapport hebdo (2026-04-26)
+- generate_weekly_report() séparé du daily
+- Dimanche 20h CEST automatique, commande /weekly
+- Sections : alertes C1/C2, performance shadow, wallets, alignment, orchestrateur, coûts
+
+### M8-B v1 — Dashboard Web (2026-04-26)
+- FastAPI backend intégré dans le daemon (uvicorn embarqué — résout conflit DuckDB lock)
+- React frontend, Caddy reverse proxy avec basic auth
+- 5 pages : Overview, Alerts, Wallets, Performance, System
+- Accessible http://62.146.230.73:3000
+
+### M8-B v2 — Dashboard refonte (2026-04-27)
+- Frontend wipé + reconstruit : SWR + Tailwind v4 (`@theme`) + Geist font + lucide-react
+- Design "trading terminal" : liquid-glass cards, ambient gradient, font-light hero numbers, sidebar flottante
+- Logo Polybot intégré (sidebar 128×128 + favicon)
+- Palette : `accent-blue` (#4f70ff, ex-orange) + `accent-violet` + `accent-cyan` (radar feel)
+- Responsive : sidebar desktop ≥768px, bottom tab bar mobile, mobile header
+- 6 pages incluant nouvelle WalletDetail (`/wallets/:address`)
+- 3 nouveaux endpoints API : `/api/clusters`, `/api/wallets/{address}` (avec cex/cluster), `/api/wallets/{address}/trades`
+- `/api/markets/hot` modifié : ranking par C2 score (BREAKING)
+- 240 tests, lint clean
+
+### Daemon unifié (2026-04-25)
+- Tous les indexers + bot + C1 + C2 fusionnés dans un seul process
+- ThreadPoolExecutor(max_workers=1) sérialise les écritures DuckDB
+- Élimine la contention multi-process (cause racine des 1863 restarts trades, 83 erreurs)
+- Anciens timers M2-M3 supprimés, 3 timers M1 conservés
+- Circuit breaker loop intégrée
+
+### M9 — CEX Funding Detection (2026-04-26)
+- 24 CEX hot wallets vérifiés Polygonscan (Binance 7+1 discovered, Coinbase 3, OKX 3, Kraken 3, etc.)
+- indexer_cex_funding : traçage 2 hops USDC via Alchemy, 50 wallets/heure
+- shared_cex_deposit_ratio : 8ème feature C2 (>30% = signal)
+- Migration 008 (cex_hot_wallets, cex_funding_map)
+- Découverte : hot wallet Binance 0xf70da978... trouvé via validation ground truth Iran
+
+### M10 — Wallet Clustering Victor (2026-04-26)
+- Session 1 calibration : signal shared_funded_by validé
+  - Théo 4/4 (même funded_by 0x4b6f17...)
+  - Iran 6/6 (même funded_by 0xf70da9...)
+  - Témoin : 0 faux cluster (hors HW Binance découvert)
+  - Pas besoin de grid search — le signal est binaire
+- Session 2 prod : clustering daily, 2 clusters trouvés (Théo/4 + 1 paire organique)
+- cluster_co_presence : bonus +1 au score C2 si ≥3 wallets même cluster
+- Migration 009 (wallet_clusters, wallet_cluster_members)
+
+### État actuel du système
+- Shadow mode ON (alertes dans #ops)
+- 7 indexers actifs : trades (60s), markets (15min), proxy_factory (1h), resolutions (1h), onchain (1h), cex_funding (1h), clustering (daily)
+- C1 : 18 alertes émises, 6 résolues, Shadow P&L +$156.97
+- C2 : scanne 300+ marchés hot / 5 min, 0 alertes (seuil 4/8 non atteint)
+- C3 : 14+ marchés scorés, cache LLM actif
+- Dashboard v2 déployé (http://62.146.230.73:3000)
+- 240 tests, lint clean
+- RAM : 1.2 GB / 7.8 GB, Disk : 21 GB / 145 GB
+
+---
+
 ## 2026-04-26 — Gate M3-M6 PASSED
 
 ### Daemon unifié
