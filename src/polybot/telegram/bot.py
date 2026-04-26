@@ -49,6 +49,7 @@ class PolyBot:
         self.app.add_handler(CommandHandler("recent", self._cmd_recent))
         self.app.add_handler(CommandHandler("toggle", self._cmd_toggle))
         self.app.add_handler(CommandHandler("audit", self._cmd_audit))
+        self.app.add_handler(CommandHandler("weekly", self._cmd_weekly))
         self.app.add_handler(CallbackQueryHandler(self._cb_alert_action))
 
     async def send_alert(
@@ -406,6 +407,20 @@ class PolyBot:
 
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
+    async def _cmd_weekly(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        from polybot.components.weekly_report import generate_weekly_report
+
+        args = context.args or []
+        weeks = 1
+        if args:
+            with contextlib.suppress(ValueError):
+                weeks = min(int(args[0]), 4)
+
+        report = generate_weekly_report(self.db_path, weeks=weeks)
+        await update.message.reply_text(report, parse_mode="HTML")
+
     async def _cmd_help(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
@@ -420,6 +435,7 @@ class PolyBot:
             "/toggle shadow — Basculer shadow mode on/off\n"
             "/toggle &lt;target&gt; on|off — Kill switch\n"
             "/audit [N] — Derniers N événements d'audit (défaut 10)\n"
+            "/weekly [N] — Rapport hebdo (N semaines, défaut 1)\n"
             "/help — Cette aide",
             parse_mode="HTML",
         )

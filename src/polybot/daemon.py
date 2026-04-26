@@ -12,6 +12,7 @@ from telegram import BotCommand
 from polybot.components.c1_sharp_money import SharpMoneyDetector
 from polybot.components.c2_informed_trading import InformedTradingDetector
 from polybot.components.report import generate_report
+from polybot.components.weekly_report import generate_weekly_report
 from polybot.config import Settings
 from polybot.indexers.markets_gamma import run as run_markets
 from polybot.indexers.onchain_alchemy import run as run_onchain
@@ -57,6 +58,28 @@ async def schedule_daily_report(bot: PolyBot, db_path: str) -> None:
             logger.info("daily_report_sent")
         except Exception:
             logger.exception("daily_report_failed")
+
+
+async def schedule_weekly_report(bot: PolyBot, db_path: str) -> None:
+    """Send weekly report every Sunday at 20:00 CEST."""
+    while True:
+        now = datetime.now(CEST)
+        days_until_sunday = (6 - now.weekday()) % 7
+        if days_until_sunday == 0 and now.hour >= 20:
+            days_until_sunday = 7
+        target = datetime.combine(
+            now.date() + timedelta(days=days_until_sunday),
+            time(20, 0), CEST,
+        )
+        wait = (target - now).total_seconds()
+        logger.info("weekly_report_scheduled", next_at=target.isoformat(), wait_s=int(wait))
+        await asyncio.sleep(wait)
+        try:
+            report = generate_weekly_report(db_path)
+            await bot.send_alert("ops", report)
+            logger.info("weekly_report_sent")
+        except Exception:
+            logger.exception("weekly_report_failed")
 
 
 async def run_scheduled_indexer(
@@ -120,6 +143,7 @@ async def main() -> None:
             BotCommand("recent", "Dernières alertes C1"),
             BotCommand("toggle", "Kill switch / shadow mode"),
             BotCommand("audit", "Derniers événements d'audit"),
+            BotCommand("weekly", "Rapport hebdomadaire"),
             BotCommand("help", "Liste des commandes"),
         ])
         logger.info("telegram_bot_started")
@@ -129,6 +153,7 @@ async def main() -> None:
                 c1.run_forever(),
                 c2.run_forever(),
                 schedule_daily_report(bot, db_path),
+                schedule_weekly_report(bot, db_path),
                 run_trades(db_path),
                 run_scheduled_indexer(
                     "markets_gamma", run_markets, 900,

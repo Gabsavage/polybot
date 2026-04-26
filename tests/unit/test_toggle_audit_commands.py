@@ -28,6 +28,20 @@ def db_path(tmp_path):
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    con.execute("""
+        CREATE TABLE alerts (
+            alert_id VARCHAR PRIMARY KEY,
+            component VARCHAR,
+            emitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            condition_id VARCHAR,
+            side VARCHAR,
+            size_usd DECIMAL(18,2),
+            price DECIMAL(6,4),
+            size_suggested_usd DECIMAL(18,2),
+            alignment_score INTEGER,
+            score INTEGER
+        )
+    """)
     con.close()
     _invalidate_cache()
     return path
@@ -86,3 +100,21 @@ class TestAuditCommand:
         reply = update.message.reply_text.call_args[0][0]
         assert "c1" in reply
         assert "c2" in reply
+
+
+class TestWeeklyCommand:
+    @pytest.mark.asyncio
+    async def test_weekly_returns_report(self, db_path):
+        from polybot.telegram.bot import PolyBot
+
+        with patch.object(PolyBot, "__init__", lambda self, s: None):
+            bot = PolyBot.__new__(PolyBot)
+            bot.db_path = db_path
+            bot.settings = MagicMock()
+
+        update, context = _make_update_context([])
+        await bot._cmd_weekly(update, context)
+
+        update.message.reply_text.assert_called_once()
+        reply = update.message.reply_text.call_args[0][0]
+        assert "Weekly Report" in reply or "Aucune alerte" in reply
