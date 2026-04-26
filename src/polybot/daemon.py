@@ -20,12 +20,21 @@ from polybot.indexers.resolutions_uma import run as run_resolutions
 from polybot.indexers.trades_dataapi import run_forever as run_trades
 from polybot.jobs.log_alert_outcomes import log_alert_outcomes
 from polybot.logging import setup_logging
+from polybot.orchestrator.circuit_breakers import CircuitBreaker
+from polybot.orchestrator.kill_switches import is_component_enabled
 from polybot.telegram.bot import PolyBot
 
 logger = structlog.get_logger()
 
 CEST = timezone(timedelta(hours=2))
 DAILY_REPORT_HOUR = 9  # 09:00 CEST
+
+INDEXER_KILL_TARGETS = {
+    "markets_gamma": "markets",
+    "proxy_factory": "markets",
+    "resolutions_uma": "resolutions",
+    "onchain_alchemy": "onchain",
+}
 
 
 async def schedule_daily_report(bot: PolyBot, db_path: str) -> None:
@@ -66,6 +75,11 @@ async def run_scheduled_indexer(
         await asyncio.sleep(initial_delay)
 
     while True:
+        kill_target = INDEXER_KILL_TARGETS.get(name)
+        if kill_target and not is_component_enabled(kwargs.get("db_path", ""), kill_target):
+            logger.info("indexer_killed", indexer=name)
+            await asyncio.sleep(interval)
+            continue
         start = time_mod.monotonic()
         try:
             bound = partial(fn, **kwargs)
@@ -93,6 +107,7 @@ async def main() -> None:
     alchemy_url = settings.ALCHEMY_POLYGON_URL
 
     db_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="db-writer")
+    circuit = CircuitBreaker(db_path=db_path, bot=bot)
 
     async with bot.app:
         await bot.app.start()
@@ -103,7 +118,8 @@ async def main() -> None:
             BotCommand("report", "Rapport performance quotidien"),
             BotCommand("risk", "Analyse resolution risk d'un marché"),
             BotCommand("recent", "Dernières alertes C1"),
-            BotCommand("toggle", "Toggle shadow mode on/off"),
+            BotCommand("toggle", "Kill switch / shadow mode"),
+            BotCommand("audit", "Derniers événements d'audit"),
             BotCommand("help", "Liste des commandes"),
         ])
         logger.info("telegram_bot_started")
@@ -139,6 +155,7 @@ async def main() -> None:
                     db_executor, initial_delay=900,
                     db_path=db_path,
                 ),
+                circuit.run_forever(),
             )
         finally:
             db_executor.shutdown(wait=False)
