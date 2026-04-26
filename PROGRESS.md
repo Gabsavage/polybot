@@ -1,58 +1,50 @@
 # Polymarket Bot — Progress
 
-## 2026-04-24 — M3 + M4 en cours (deploy pending)
+## 2026-04-26 — Gate M3-M6 PASSED
 
-### M3 — Enrichissement minimal
+### Daemon unifié
 
-| Livrable | Status | Notes |
-|----------|--------|-------|
-| Migration 003 (proxy_eoa_map, resolutions, trades_all) | Done | 3 tables |
-| Migration 004 (trades_all PK composite tx_hash_log_idx) | Done | Fix après discovery empirique |
-| ADR-014 (Proxy Factory contracts) | Done | |
-| indexer_proxy_factory | Done | Pivot : scan factory brut → lookup ciblé (15 RPC calls) |
-| indexer_resolutions_uma | Done | Pivot : UMA Oracle → ConditionalTokens contract |
-| indexer_onchain_alchemy | Done | Pivot : Goldsky (mort 108j) → Alchemy RPC direct |
-| indexer_onchain_goldsky | Reporté | Subgraph bloqué block 81.2M, 108 jours de retard |
-| populate_volume_1h | Reporté | Dépendait de Goldsky, à revisiter |
+Tous les indexers et composants fusionnés dans un seul process daemon.
+Élimine la contention DuckDB multi-process (ADR-013 obsolète).
+- ThreadPoolExecutor(max_workers=1) sérialise les écritures
+- Anciens timers M2-M3 supprimés
+- 164 tests, lint clean
 
-**Pivots majeurs M3 :**
-- Goldsky subgraph mort → Alchemy RPC direct pour trades on-chain
-- Proxy factory scan brut (92K proxies, 0/15 matchés, ~100h ETA) → lookup ciblé (15/15 matchés, 15 calls, 2 min)
-- UMA Oracle V2 quasi-inactif → ConditionalTokens ConditionResolution events (32K+ résolutions)
-- Alchemy free tier → PAYG ($25 cap) pour supporter les backfills
+### M6 — C2 Informed Trading (déployé 2026-04-25)
 
-**Données collectées :**
-- proxy_eoa_map : 15/15 Tier A matchés (7 Gnosis Safe, 3 first_tx, 5 self-EOA)
-- resolutions : 32K+ (backfill en cours sur VPS)
-- trades_all : pipeline validé, scan 24h initial au deploy
+- 7 features on-chain : fresh_wallets, concentration, time_to_event,
+  niche_market, momentum, volume_zscore, single_dominance
+- Score >= 4/7 → alerte
+- Alignment v0 (informatif, pas filtrant)
+- alert_outcomes job (10 outcomes enrichis post-résolution)
+- /toggle shadow pour promotion #ops → #alerts
 
-### M4 — Bot Telegram + C1 Sharp Money Copy
+### M5 — C3 Resolution Risk (déployé 2026-04-25)
 
-| Livrable | Status | Notes |
-|----------|--------|-------|
-| Migration 005 (alerts + bankroll_state v2) | Done | DROP + recreate (tables vides) |
-| Bot Telegram (commands) | Done | /status, /bankroll, /help, /recent |
-| C1 Sharp Money (détection + filtrage) | Done | 4 filtres, BUY only, shadow mode |
-| Sizing Kelly | Done | Quarter-Kelly, caps 5%/$10 |
-| Daemon combiné (bot + C1) | Done | asyncio, single process |
+- Haiku one-shot + cache permanent + 4 rules dynamiques
+- Score composite : 50% LLM + 30% rules + 20% oracle
+- /risk command < 5s (cache hit < 100ms)
+- Intégré dans C1 (remplace placeholder 0.3) — 11/11 alertes avec vrai score
 
-**C1 features :**
-- 4 filtres : size min $1000, rate limit 3h, dedup hash 5min, liquidity $500
-- BUY only (v1)
-- Quarter-Kelly : A1 edge 4% conf 1.0, A2 edge 2% conf 0.6
-- Shadow mode : tout dans #ops (pas #alerts)
-- resolution_risk_score = 0.3 placeholder (vrai C3 en M5)
+### M4 — Bot Telegram + C1 Sharp Money (déployé 2026-04-25)
+
+- Bot : /status, /bankroll, /help, /recent, /risk, /report, /toggle
+- C1 : 4 filtres, BUY only, Quarter-Kelly sizing, shadow mode
+- 11 alertes C1 émises, bankroll $2000
 - Alert IDs : AL_YYYYMMDD_XXXX séquentiels
 
-**Tests : 104 unit tests pass, lint clean**
+### M3 — Enrichissement minimal (déployé 2026-04-25)
 
-### Deploy pending
+- proxy_eoa_map : 91,974 proxies, 15/15 Tier A matchés
+- resolutions : 1,014,570 via ConditionalTokens events
+- trades_all : 5,332,147 via Alchemy RPC direct
+- Pivots : Goldsky mort → Alchemy, UMA Oracle → ConditionalTokens, factory scan → lookup ciblé
 
-Deploy combiné M3+M4 en cours :
-- Migrations 003, 004, 005
-- 3 timers horaires M3 (proxy_factory, resolutions, onchain_alchemy)
-- 1 daemon M4 (bot + C1)
-- Backfills : proxy 15/15 done, resolutions en cours (~32K), onchain 24h au deploy
+### M7-lite — Wallet scoring (scripts prêts)
+
+- score_tier_a.py : 15 wallets scorés, Erasmus démoté (0/13)
+- scan_new_sharps.py + lookup_candidates.py : funnel de découverte
+- À relancer dans 2 semaines avec plus de données
 
 ---
 

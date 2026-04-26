@@ -4,6 +4,87 @@ Decision gates entre milestones de la phase B. Reference : B_plan_developpement.
 
 ---
 
+## Gate M6 → M7 — FINAL
+
+**Date** : 2026-04-26
+**Tag** : `m6-complete`
+**Decision** : [x] GO
+
+### Critères
+
+- [x] C2 pipeline fonctionnel (scans toutes les 5 min, 200+ marchés hot)
+- [x] alert_outcomes job fonctionne (10 outcomes enrichis)
+- [x] Daemon unifié — 0 erreurs DuckDB lock en 12h
+- [x] /toggle shadow fonctionne
+- [ ] Alertes C2 émises : 0 (normal — seuil 4/7 non atteint, pipeline OK)
+
+### Architecture
+
+- Daemon unifié : bot + C1 + C2 + 5 indexers dans un seul process
+- ThreadPoolExecutor(max_workers=1) pour sérialiser les écritures DB
+- Anciens timers/services M2-M3 supprimés
+- 3 timers M1 conservés (snapshot, universe-refresh, healthcheck)
+
+---
+
+## Gate M5 → M6 — FINAL
+
+**Date** : 2026-04-25
+**Tag** : `m5-complete`
+**Decision** : [x] GO
+
+### Critères
+
+- [x] /risk < 5s
+- [x] Cache : 2ème appel = 0 call LLM
+- [x] C1 alertes incluent vrai score C3 (11/11)
+- [x] resolution_risk_cache : 11 entries
+
+---
+
+## Gate M4 → M5 — FINAL
+
+**Date** : 2026-04-25
+**Tag** : `m4-complete`
+**Decision** : [x] GO
+
+### Critères
+
+- [x] Alerte C1 test reçue dans #ops < 2 min
+- [x] Format lisible mobile
+- [x] Dédup fonctionne
+- [x] /status et /bankroll fonctionnent
+- [x] 11 alertes C1 émises
+
+### Key metrics
+
+- 11 alertes C1 en shadow mode
+- Bankroll initialisé à $2000
+- Quarter-Kelly sizing actif
+
+---
+
+## Gate M3 → M4 — FINAL
+
+**Date** : 2026-04-25
+**Tag** : `m3-complete`
+**Decision** : [x] GO
+
+### Critères
+
+- [x] proxy_eoa_map : 91,974 (objectif >= 15) — 15/15 Tier A matchés
+- [x] resolutions : 1,014,570 (objectif >= 100)
+- [x] trades_all : 5,332,147 (objectif >= 10,000)
+
+### Pivots majeurs
+
+- Goldsky mort → Alchemy RPC direct
+- Factory scan brut → lookup ciblé (15 calls vs 75M blocks)
+- UMA Oracle → ConditionalTokens contract
+- Alchemy free tier → PAYG
+
+---
+
 ## Gate M2 → M3 — FINAL
 
 **Date** : 2026-04-24
