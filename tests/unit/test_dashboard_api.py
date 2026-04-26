@@ -192,6 +192,46 @@ def db_path(tmp_path):
             computed_at TIMESTAMP
         )
     """)
+    con.execute("""
+        CREATE TABLE cex_hot_wallets (
+            address VARCHAR PRIMARY KEY,
+            exchange_name VARCHAR NOT NULL,
+            label VARCHAR,
+            verified BOOLEAN DEFAULT TRUE,
+            source VARCHAR,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    con.execute("""
+        CREATE TABLE cex_funding_map (
+            wallet_address VARCHAR PRIMARY KEY,
+            funded_by VARCHAR,
+            funded_by_hop2 VARCHAR,
+            cex_source VARCHAR,
+            deposit_address VARCHAR,
+            confidence DECIMAL(3,2),
+            method VARCHAR,
+            traced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    con.execute("""
+        CREATE TABLE wallet_clusters (
+            cluster_id VARCHAR PRIMARY KEY,
+            funded_by VARCHAR NOT NULL,
+            cex_source VARCHAR,
+            size INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    con.execute("""
+        CREATE TABLE wallet_cluster_members (
+            wallet_address VARCHAR PRIMARY KEY,
+            cluster_id VARCHAR NOT NULL,
+            funded_by VARCHAR NOT NULL,
+            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     con.close()
     return path
 
