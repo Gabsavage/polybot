@@ -11,7 +11,9 @@ from polybot.components.c1_sharp_money import (
     SharpMoneyDetector,
     _dedup_hash,
     _format_alert,
+    _load_cursor,
     _next_alert_id,
+    _persist_cursor,
 )
 from polybot.components.sizing import compute_size
 from polybot.config import Settings
@@ -321,3 +323,56 @@ class TestBankroll:
         row = con.execute("SELECT tags FROM alerts LIMIT 1").fetchone()
         con.close()
         assert row and "bankroll_stale" in (row[0] or "")
+
+
+# --- Cursor persistence ---
+
+
+class TestCursorPersistence:
+    def test_load_returns_none_when_no_state(self, db_path):
+        assert _load_cursor(db_path) is None
+
+    def test_persist_then_load_roundtrip(self, db_path):
+        ts = datetime(2026, 4, 25, 14, 30, 0, tzinfo=UTC)
+        _persist_cursor(db_path, ts)
+        loaded = _load_cursor(db_path)
+        assert loaded == ts
+
+    def test_init_loads_persisted_cursor(self, db_path, settings):
+        ts = datetime(2026, 4, 25, 14, 30, 0, tzinfo=UTC)
+        _persist_cursor(db_path, ts)
+
+        # Detector init must read the persisted cursor.
+        # Override DUCKDB_PATH so __init__ uses our test DB.
+        settings_with_db = settings.model_copy(update={"DUCKDB_PATH": Path(db_path)})
+        bot = MagicMock()
+        c1 = SharpMoneyDetector(bot=bot, settings=settings_with_db)
+        assert c1.last_check_ts == ts
+
+    def test_init_defaults_to_now_without_state(self, db_path, settings):
+        # No persisted cursor → falls back to now.
+        settings_with_db = settings.model_copy(update={"DUCKDB_PATH": Path(db_path)})
+        before = datetime.now(UTC)
+        bot = MagicMock()
+        c1 = SharpMoneyDetector(bot=bot, settings=settings_with_db)
+        after = datetime.now(UTC)
+        assert before <= c1.last_check_ts <= after
+
+    def test_poll_persists_cursor(self, db_path, settings):
+        _seed_wallet(db_path)
+        _seed_bankroll(db_path)
+        _seed_market(db_path)
+        _insert_trade(db_path, size_usd=1500.0)
+
+        bot = MagicMock()
+        bot.send_alert = AsyncMock(return_value=999)
+        c1 = SharpMoneyDetector(bot=bot, settings=settings)
+        c1.db_path = db_path
+        c1.last_check_ts = datetime.now(UTC) - timedelta(minutes=5)
+
+        import asyncio
+        asyncio.new_event_loop().run_until_complete(c1.poll_once())
+
+        loaded = _load_cursor(db_path)
+        assert loaded is not None
+        assert loaded == c1.last_check_ts

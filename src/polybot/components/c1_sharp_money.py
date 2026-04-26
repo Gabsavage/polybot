@@ -47,6 +47,44 @@ def _get_bankroll(con: duckdb.DuckDBPyConnection) -> tuple[float | None, datetim
     return None, None
 
 
+CURSOR_NAME = "c1_sharp_money"
+
+
+def _load_cursor(db_path: str) -> datetime | None:
+    """Load persisted last_check_ts from indexer_state, or None if not set."""
+    from polybot.db.connection import db_read_with_retry
+
+    def _do(con):
+        row = con.execute(
+            "SELECT last_cursor FROM indexer_state WHERE indexer_name = ?",
+            [CURSOR_NAME],
+        ).fetchone()
+        if row and row[0]:
+            try:
+                return datetime.fromisoformat(row[0])
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    return db_read_with_retry(db_path, _do)
+
+
+def _persist_cursor(db_path: str, last_check_ts: datetime) -> None:
+    """Upsert last_check_ts into indexer_state for c1_sharp_money."""
+    def _do(con):
+        con.execute(
+            """
+            INSERT OR REPLACE INTO indexer_state (
+                indexer_name, last_synced_at, last_cursor,
+                last_run_status, updated_at
+            ) VALUES (?, NOW(), ?, 'success', NOW())
+            """,
+            [CURSOR_NAME, last_check_ts.isoformat()],
+        )
+
+    db_write_with_retry(db_path, _do)
+
+
 def _format_alert(
     wallet_name: str,
     tier_label: str,
@@ -122,7 +160,10 @@ class SharpMoneyDetector:
         self.bot = bot
         self.settings = settings
         self.db_path = str(settings.DUCKDB_PATH)
-        self.last_check_ts = datetime.now(UTC)
+        loaded = _load_cursor(self.db_path)
+        self.last_check_ts = loaded if loaded else datetime.now(UTC)
+        if loaded:
+            logger.info("c1_cursor_loaded", last_check_ts=loaded.isoformat())
         self.risk_scorer = None
         if settings.ANTHROPIC_API_KEY:
             from polybot.components.c3_resolution_risk import ResolutionRiskScorer
@@ -382,12 +423,16 @@ class SharpMoneyDetector:
                     tx=trade.get("transaction_hash", "?")[:16],
                 )
 
-        # Update cursor to latest trade timestamp
+        # Update cursor to latest trade timestamp + persist to DB
         max_ts = max(
             (t["timestamp_ts"] for t in trades if t["timestamp_ts"]),
             default=self.last_check_ts,
         )
         self.last_check_ts = max_ts
+        try:
+            _persist_cursor(self.db_path, self.last_check_ts)
+        except Exception:
+            logger.exception("c1_cursor_persist_failed")
 
         if emitted:
             logger.info("c1_poll_complete", new_alerts=emitted, trades_checked=len(trades))
