@@ -3,6 +3,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import duckdb
 import httpx
 import pytest
 
@@ -117,3 +118,190 @@ class TestTraceFundingHops:
 
         assert result["funded_by"] == "0xfunder"
         assert result["funded_by_hop2"] is None
+
+
+def _seed_trades(db_path: str, wallets_with_volume: list[tuple[str, float]]):
+    """Insert fake trades into trades_all for testing."""
+    con = duckdb.connect(db_path)
+    for i, (wallet, vol) in enumerate(wallets_with_volume):
+        con.execute(
+            """
+            INSERT INTO trades_all (
+                tx_hash_log_idx, transaction_hash, log_index,
+                proxy_wallet, size_usd, timestamp_ts
+            ) VALUES (?, ?, ?, ?, ?, NOW())
+            """,
+            [f"hash_{wallet}_{i}", f"tx_{i}", i, wallet, vol],
+        )
+    con.close()
+
+
+def _seed_cex_hot_wallet(db_path: str, address: str, exchange: str):
+    """Insert a CEX hot wallet for testing."""
+    con = duckdb.connect(db_path)
+    con.execute(
+        "INSERT INTO cex_hot_wallets (address, exchange_name) VALUES (?, ?)",
+        [address.lower(), exchange],
+    )
+    con.close()
+
+
+class TestIdentifyCex:
+    def test_direct_hot_wallet(self, db_path):
+        from polybot.indexers.cex_funding import identify_cex
+
+        _seed_cex_hot_wallet(db_path, "0xbinance_hw", "Binance")
+
+        result = identify_cex(db_path, "0xBINANCE_HW", None)
+        assert result is not None
+        assert result["cex_source"] == "Binance"
+        assert result["method"] == "direct_hot_wallet"
+        assert result["confidence"] == 1.0
+        assert result["deposit_address"] is None
+
+    def test_hop2_hot_wallet(self, db_path):
+        from polybot.indexers.cex_funding import identify_cex
+
+        _seed_cex_hot_wallet(db_path, "0xcoinbase_hw", "Coinbase")
+
+        result = identify_cex(db_path, "0xdeposit_addr", "0xCOINBASE_HW")
+        assert result is not None
+        assert result["cex_source"] == "Coinbase"
+        assert result["method"] == "hop2_hot_wallet"
+        assert result["confidence"] == 0.9
+        assert result["deposit_address"] == "0xdeposit_addr"
+
+    def test_no_match(self, db_path):
+        from polybot.indexers.cex_funding import identify_cex
+
+        result = identify_cex(db_path, "0xrandom1", "0xrandom2")
+        assert result is None
+
+    def test_none_funded_by(self, db_path):
+        from polybot.indexers.cex_funding import identify_cex
+
+        result = identify_cex(db_path, None, None)
+        assert result is None
+
+
+class TestInsertMapping:
+    def test_insert_with_cex(self, db_path):
+        from polybot.indexers.cex_funding import insert_mapping
+
+        hops = {"funded_by": "0xfunder", "funded_by_hop2": "0xhw"}
+        cex_result = {
+            "cex_source": "Binance",
+            "method": "direct_hot_wallet",
+            "deposit_address": None,
+            "confidence": 1.0,
+        }
+        insert_mapping(db_path, "0xwallet1", hops, cex_result)
+
+        con = duckdb.connect(db_path)
+        row = con.execute(
+            "SELECT wallet_address, cex_source, method, confidence "
+            "FROM cex_funding_map WHERE wallet_address = '0xwallet1'"
+        ).fetchone()
+        con.close()
+        assert row[1] == "Binance"
+        assert row[2] == "direct_hot_wallet"
+        assert float(row[3]) == 1.0
+
+    def test_insert_no_cex(self, db_path):
+        from polybot.indexers.cex_funding import insert_mapping
+
+        hops = {"funded_by": "0xfunder", "funded_by_hop2": "0xrandom"}
+        insert_mapping(db_path, "0xwallet2", hops, None)
+
+        con = duckdb.connect(db_path)
+        row = con.execute(
+            "SELECT wallet_address, funded_by, cex_source, method "
+            "FROM cex_funding_map WHERE wallet_address = '0xwallet2'"
+        ).fetchone()
+        con.close()
+        assert row[1] == "0xfunder"
+        assert row[2] is None
+        assert row[3] is None
+
+    def test_insert_no_usdc(self, db_path):
+        from polybot.indexers.cex_funding import insert_mapping
+
+        hops = {"funded_by": None, "funded_by_hop2": None}
+        insert_mapping(db_path, "0xwallet3", hops, None)
+
+        con = duckdb.connect(db_path)
+        row = con.execute(
+            "SELECT funded_by, cex_source, method "
+            "FROM cex_funding_map WHERE wallet_address = '0xwallet3'"
+        ).fetchone()
+        con.close()
+        assert row[0] is None
+        assert row[1] is None
+        assert row[2] is None
+
+    def test_idempotent(self, db_path):
+        from polybot.indexers.cex_funding import insert_mapping
+
+        hops = {"funded_by": "0xf", "funded_by_hop2": None}
+        insert_mapping(db_path, "0xwallet4", hops, None)
+        insert_mapping(db_path, "0xwallet4", hops, None)
+
+        con = duckdb.connect(db_path)
+        count = con.execute(
+            "SELECT COUNT(*) FROM cex_funding_map WHERE wallet_address = '0xwallet4'"
+        ).fetchone()[0]
+        con.close()
+        assert count == 1
+
+
+class TestGetUntracedWallets:
+    def test_returns_untraced(self, db_path):
+        from polybot.indexers.cex_funding import (
+            get_untraced_wallets,
+            insert_mapping,
+        )
+
+        _seed_trades(
+            db_path,
+            [
+                ("0xw1", 10000.0),
+                ("0xw2", 5000.0),
+                ("0xw3", 3000.0),
+            ],
+        )
+        insert_mapping(
+            db_path,
+            "0xw1",
+            {"funded_by": "0xf", "funded_by_hop2": None},
+            None,
+        )
+
+        result = get_untraced_wallets(db_path, max_wallets=10)
+        assert "0xw1" not in result
+        assert "0xw2" in result
+        assert "0xw3" in result
+
+    def test_priority_by_volume(self, db_path):
+        from polybot.indexers.cex_funding import get_untraced_wallets
+
+        _seed_trades(
+            db_path,
+            [
+                ("0xsmall", 100.0),
+                ("0xbig", 50000.0),
+                ("0xmedium", 5000.0),
+            ],
+        )
+
+        result = get_untraced_wallets(db_path, max_wallets=10)
+        assert result[0] == "0xbig"
+        assert result[1] == "0xmedium"
+        assert result[2] == "0xsmall"
+
+    def test_respects_limit(self, db_path):
+        from polybot.indexers.cex_funding import get_untraced_wallets
+
+        _seed_trades(db_path, [(f"0xw{i}", float(i * 100)) for i in range(10)])
+
+        result = get_untraced_wallets(db_path, max_wallets=3)
+        assert len(result) == 3
