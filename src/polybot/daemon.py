@@ -17,6 +17,7 @@ from polybot.components.report import generate_report
 from polybot.components.weekly_report import generate_weekly_report
 from polybot.config import Settings
 from polybot.dashboard.api import app as dashboard_app
+from polybot.indexers.cex_funding import run as run_cex_funding
 from polybot.indexers.markets_gamma import run as run_markets
 from polybot.indexers.onchain_alchemy import run as run_onchain
 from polybot.indexers.proxy_factory import run as run_proxy
@@ -72,7 +73,8 @@ async def schedule_weekly_report(bot: PolyBot, db_path: str) -> None:
             days_until_sunday = 7
         target = datetime.combine(
             now.date() + timedelta(days=days_until_sunday),
-            time(20, 0), CEST,
+            time(20, 0),
+            CEST,
         )
         wait = (target - now).total_seconds()
         logger.info("weekly_report_scheduled", next_at=target.isoformat(), wait_s=int(wait))
@@ -148,21 +150,25 @@ async def main() -> None:
     async with bot.app:
         await bot.app.start()
         await bot.app.updater.start_polling(drop_pending_updates=True)
-        await bot.app.bot.set_my_commands([
-            BotCommand("status", "Santé du système"),
-            BotCommand("bankroll", "Afficher / mettre à jour le bankroll"),
-            BotCommand("report", "Rapport performance quotidien"),
-            BotCommand("risk", "Analyse resolution risk d'un marché"),
-            BotCommand("recent", "Dernières alertes C1"),
-            BotCommand("toggle", "Kill switch / shadow mode"),
-            BotCommand("audit", "Derniers événements d'audit"),
-            BotCommand("weekly", "Rapport hebdomadaire"),
-            BotCommand("help", "Liste des commandes"),
-        ])
+        await bot.app.bot.set_my_commands(
+            [
+                BotCommand("status", "Santé du système"),
+                BotCommand("bankroll", "Afficher / mettre à jour le bankroll"),
+                BotCommand("report", "Rapport performance quotidien"),
+                BotCommand("risk", "Analyse resolution risk d'un marché"),
+                BotCommand("recent", "Dernières alertes C1"),
+                BotCommand("toggle", "Kill switch / shadow mode"),
+                BotCommand("audit", "Derniers événements d'audit"),
+                BotCommand("weekly", "Rapport hebdomadaire"),
+                BotCommand("help", "Liste des commandes"),
+            ]
+        )
         logger.info("telegram_bot_started")
 
         dashboard_thread = threading.Thread(
-            target=_run_dashboard_blocking, daemon=True, name="dashboard-api",
+            target=_run_dashboard_blocking,
+            daemon=True,
+            name="dashboard-api",
         )
         dashboard_thread.start()
         logger.info("dashboard_api_started", host="127.0.0.1", port=8000)
@@ -175,28 +181,55 @@ async def main() -> None:
                 schedule_weekly_report(bot, db_path),
                 run_trades(db_path),
                 run_scheduled_indexer(
-                    "markets_gamma", run_markets, 900,
-                    db_executor, initial_delay=0,
+                    "markets_gamma",
+                    run_markets,
+                    900,
+                    db_executor,
+                    initial_delay=0,
                     db_path=db_path,
                 ),
                 run_scheduled_indexer(
-                    "proxy_factory", run_proxy, 3600,
-                    db_executor, initial_delay=0,
-                    db_path=db_path, alchemy_url=alchemy_url,
+                    "proxy_factory",
+                    run_proxy,
+                    3600,
+                    db_executor,
+                    initial_delay=0,
+                    db_path=db_path,
+                    alchemy_url=alchemy_url,
                 ),
                 run_scheduled_indexer(
-                    "resolutions_uma", run_resolutions, 3600,
-                    db_executor, initial_delay=300,
-                    db_path=db_path, alchemy_url=alchemy_url,
+                    "resolutions_uma",
+                    run_resolutions,
+                    3600,
+                    db_executor,
+                    initial_delay=300,
+                    db_path=db_path,
+                    alchemy_url=alchemy_url,
                 ),
                 run_scheduled_indexer(
-                    "onchain_alchemy", run_onchain, 3600,
-                    db_executor, initial_delay=600,
-                    db_path=db_path, alchemy_url=alchemy_url,
+                    "onchain_alchemy",
+                    run_onchain,
+                    3600,
+                    db_executor,
+                    initial_delay=600,
+                    db_path=db_path,
+                    alchemy_url=alchemy_url,
                 ),
                 run_scheduled_indexer(
-                    "alert_outcomes", log_alert_outcomes, 3600,
-                    db_executor, initial_delay=900,
+                    "cex_funding",
+                    run_cex_funding,
+                    3600,
+                    db_executor,
+                    initial_delay=1200,
+                    db_path=db_path,
+                    alchemy_url=alchemy_url,
+                ),
+                run_scheduled_indexer(
+                    "alert_outcomes",
+                    log_alert_outcomes,
+                    3600,
+                    db_executor,
+                    initial_delay=900,
                     db_path=db_path,
                 ),
                 circuit.run_forever(),
