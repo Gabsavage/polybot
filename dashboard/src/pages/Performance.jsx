@@ -62,7 +62,7 @@ export default function Performance() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-3xl font-bold">Performance</h1>
+      <h1 className="text-4xl font-light tracking-tight">Performance</h1>
 
       {insufficient && (
         <div className="bg-accent-orange/10 border border-accent-orange/30 rounded-card p-4 flex items-start gap-3">

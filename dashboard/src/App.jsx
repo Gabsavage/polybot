@@ -6,7 +6,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen bg-bg-primary text-text-primary">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex-1 overflow-y-auto p-6 md:pl-3">
         <TopBar />
         <Outlet />
       </main>

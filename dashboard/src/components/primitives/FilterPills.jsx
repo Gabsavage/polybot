@@ -10,8 +10,8 @@ export default function FilterPills({ options, value, onChange }) {
             onClick={() => onChange(opt.value)}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
               active
-                ? "bg-accent-orange text-bg-primary"
-                : "bg-white/[0.05] text-text-secondary hover:bg-white/[0.08] hover:text-text-primary"
+                ? "bg-transparent border border-accent-orange text-accent-orange"
+                : "bg-white/[0.05] border border-transparent text-text-secondary hover:bg-white/[0.08] hover:text-text-primary"
             }`}
           >
             {opt.label}

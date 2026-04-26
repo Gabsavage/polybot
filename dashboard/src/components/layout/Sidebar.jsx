@@ -11,7 +11,7 @@ const NAV = [
 
 export default function Sidebar() {
   return (
-    <aside className="hidden md:flex md:w-60 lg:w-60 md:flex-col bg-bg-sidebar border-r border-white/[0.06] py-6 px-4">
+    <aside className="hidden md:flex md:w-60 lg:w-60 md:flex-col glass-card my-3 ml-3 mr-0 py-6 px-4 sticky top-3 h-[calc(100vh-1.5rem)]">
       <h1 className="font-extrabold text-2xl tracking-widest text-text-primary mb-10 px-2">
         POLYBOT
       </h1>

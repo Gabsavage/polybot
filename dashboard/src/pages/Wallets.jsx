@@ -21,7 +21,7 @@ export default function Wallets() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-3xl font-bold">Wallets Tier A</h1>
+      <h1 className="text-4xl font-light tracking-tight">Wallets Tier A</h1>
       <div className="flex flex-col gap-3">
         {sorted.map((w) => (
           <WalletCard key={w.address} wallet={w} />

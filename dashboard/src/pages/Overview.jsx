@@ -58,7 +58,7 @@ export default function Overview() {
             <div className="text-xs uppercase tracking-wider text-text-secondary mb-2">
               Shadow P&L cumulé
             </div>
-            <div className={`text-5xl font-bold tracking-tight ${pnlColor(totalPnl)}`}>
+            <div className={`text-6xl font-light tracking-tight ${pnlColor(totalPnl)}`}>
               {formatUSD(totalPnl, { signed: true })}
             </div>
             <div className="mt-2 inline-flex items-center gap-2 text-xs">
