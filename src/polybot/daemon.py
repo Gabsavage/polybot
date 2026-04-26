@@ -18,6 +18,7 @@ from polybot.components.weekly_report import generate_weekly_report
 from polybot.config import Settings
 from polybot.dashboard.api import app as dashboard_app
 from polybot.indexers.cex_funding import run as run_cex_funding
+from polybot.indexers.clustering_victor import run as run_clustering
 from polybot.indexers.markets_gamma import run as run_markets
 from polybot.indexers.onchain_alchemy import run as run_onchain
 from polybot.indexers.proxy_factory import run as run_proxy
@@ -230,6 +231,14 @@ async def main() -> None:
                     3600,
                     db_executor,
                     initial_delay=900,
+                    db_path=db_path,
+                ),
+                run_scheduled_indexer(
+                    "clustering_victor",
+                    run_clustering,
+                    86400,
+                    db_executor,
+                    initial_delay=1800,
                     db_path=db_path,
                 ),
                 circuit.run_forever(),
