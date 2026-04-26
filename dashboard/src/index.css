@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-primary: #0a0a0f;
+  --color-bg-card: #12121a;
+  --color-bg-card-hover: #16161f;
+  --color-bg-sidebar: #0e0e14;
+  --color-accent-orange: #f97316;
+  --color-accent-violet: #a855f7;
+  --color-pnl-positive: #22c55e;
+  --color-pnl-negative: #ef4444;
+  --color-text-primary: #f1f1f4;
+  --color-text-secondary: #6b7280;
+  --color-text-tertiary: #4b5563;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --radius-card: 16px;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    background: linear-gradient(135deg, #12121a 0%, #0e0e18 100%);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-card);
+  }
+  .glass-hero {
+    backdrop-filter: blur(20px);
+    background: rgba(18, 18, 26, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-card);
+  }
+  .row-hover {
+    transition: background 0.15s ease;
+  }
+  .row-hover:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .card-hover {
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  .card-hover:hover {
+    border-color: rgba(249, 115, 22, 0.3);
+  }
+}
