@@ -156,7 +156,7 @@ def get_alerts(
 def get_wallets(con: DB):
     wallets = con.execute(
         "SELECT w.address, w.tier, w.active, w.source, w.added_at, "
-        "w.honeypot_flag, w.tier_a_confidence, "
+        "w.honeypot_flag, w.tier_a_confidence, w.notes, "
         "COUNT(t.transaction_hash) AS trades_total, "
         "SUM(CASE WHEN t.timestamp_ts >= CURRENT_DATE - INTERVAL '7 DAY' "
         "    THEN 1 ELSE 0 END) AS trades_7d, "
@@ -166,7 +166,7 @@ def get_wallets(con: DB):
         "LEFT JOIN trades t ON w.address = t.proxy_wallet "
         "WHERE w.tier = 'A' "
         "GROUP BY w.address, w.tier, w.active, w.source, w.added_at, "
-        "w.honeypot_flag, w.tier_a_confidence "
+        "w.honeypot_flag, w.tier_a_confidence, w.notes "
         "ORDER BY trades_total DESC"
     ).fetchall()
 
@@ -207,10 +207,11 @@ def get_wallets(con: DB):
             "added_at": str(r[4]) if r[4] else None,
             "honeypot_flag": r[5],
             "tier_a_confidence": float(r[6]) if r[6] else None,
-            "trades_total": r[7],
-            "trades_7d": r[8],
-            "last_trade": str(r[9]) if r[9] else None,
-            "total_volume": float(r[10]) if r[10] else None,
+            "notes": r[7],
+            "trades_total": r[8],
+            "trades_7d": r[9],
+            "last_trade": str(r[10]) if r[10] else None,
+            "total_volume": float(r[11]) if r[11] is not None else None,
             "resolved": resolved,
             "correct": correct,
             "pnl": p["pnl"],
