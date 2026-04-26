@@ -349,3 +349,51 @@ class TestAuditEndpoint:
         data = resp.json()
         assert len(data) == 1
         assert data[0]["event_type"] == "kill_switch"
+
+
+class TestClustersEndpoint:
+    def test_clusters_ordered_by_tier_a_count_desc(self, client, db_path):
+        con = duckdb.connect(db_path)
+        # cluster_b: 5 members (1 Tier A) ; cluster_a: 3 members (2 Tier A)
+        con.execute(
+            "INSERT INTO wallet_clusters (cluster_id, funded_by, cex_source, size) "
+            "VALUES ('cluster_a', '0xfundA', 'Binance', 3), "
+            "       ('cluster_b', '0xfundB', 'Coinbase', 5)"
+        )
+        # 2 Tier A wallets in cluster_a, 1 in cluster_b
+        for i in range(3):
+            tier = "A" if i < 2 else "B"
+            con.execute(
+                "INSERT INTO tracked_wallets (address, tier, active) VALUES (?, ?, TRUE)",
+                [f"0xa_member_{i}", tier],
+            )
+            con.execute(
+                "INSERT INTO wallet_cluster_members (wallet_address, cluster_id, funded_by) "
+                "VALUES (?, 'cluster_a', '0xfundA')",
+                [f"0xa_member_{i}"],
+            )
+        for i in range(5):
+            tier = "A" if i < 1 else "B"
+            con.execute(
+                "INSERT INTO tracked_wallets (address, tier, active) VALUES (?, ?, TRUE)",
+                [f"0xb_member_{i}", tier],
+            )
+            con.execute(
+                "INSERT INTO wallet_cluster_members (wallet_address, cluster_id, funded_by) "
+                "VALUES (?, 'cluster_b', '0xfundB')",
+                [f"0xb_member_{i}"],
+            )
+        con.close()
+
+        resp = client.get("/api/clusters")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+        # cluster_a first (2 Tier A) before cluster_b (1 Tier A)
+        assert data[0]["cluster_id"] == "cluster_a"
+        assert data[0]["tier_a_count"] == 2
+        assert data[0]["member_count"] == 3
+        assert data[0]["cex_source"] == "Binance"
+        assert data[1]["cluster_id"] == "cluster_b"
+        assert data[1]["tier_a_count"] == 1
+        assert data[1]["member_count"] == 5

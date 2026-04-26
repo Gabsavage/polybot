@@ -339,6 +339,33 @@ def get_costs(con: DB):
     }
 
 
+@app.get("/api/clusters")
+def get_clusters(con: DB):
+    rows = con.execute(
+        "SELECT c.cluster_id, c.funded_by, c.cex_source, c.size, c.created_at, "
+        "       COUNT(m.wallet_address) AS member_count, "
+        "       COUNT(*) FILTER (WHERE w.tier = 'A') AS tier_a_count "
+        "FROM wallet_clusters c "
+        "LEFT JOIN wallet_cluster_members m ON c.cluster_id = m.cluster_id "
+        "LEFT JOIN tracked_wallets w ON m.wallet_address = w.address "
+        "GROUP BY c.cluster_id, c.funded_by, c.cex_source, c.size, c.created_at "
+        "ORDER BY tier_a_count DESC, c.size DESC "
+        "LIMIT 100"
+    ).fetchall()
+    return [
+        {
+            "cluster_id": r[0],
+            "funded_by": r[1],
+            "cex_source": r[2],
+            "size": r[3],
+            "created_at": str(r[4]) if r[4] else None,
+            "member_count": r[5],
+            "tier_a_count": r[6],
+        }
+        for r in rows
+    ]
+
+
 @app.get("/api/c2/features")
 def get_c2_features(con: DB, condition_id: str = Query(...)):
     rows = con.execute(
