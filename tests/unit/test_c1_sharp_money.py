@@ -105,22 +105,22 @@ class TestSizing:
         assert size == 20.0  # 2000 * 0.25 * 0.04 * 1.0
 
     def test_a2_sizing(self, settings):
-        # 2000 * 0.25 * 0.02 * 0.6 = $6 < $10 min → None
-        assert compute_size(2000.0, 0.80, settings) is None
+        # 2000 * 0.25 * 0.02 * 0.6 = $6 (>= $1 min)
+        assert compute_size(2000.0, 0.80, settings) == 6.0
         # With larger bankroll: 10000 * 0.25 * 0.02 * 0.6 = $30
         size = compute_size(10_000.0, 0.80, settings)
         assert size == 30.0
 
     def test_below_minimum_returns_none(self, settings):
-        size = compute_size(100.0, 0.95, settings)
-        # 100 * 0.25 * 0.04 * 1.0 = 1.0 < 10 min
+        # bankroll $50, A1: 50 * 0.25 * 0.04 * 1.0 = $0.50 < $1 min → None
+        size = compute_size(50.0, 0.95, settings)
         assert size is None
 
     def test_capped_at_max_pct(self, settings):
         # bankroll $200, A1: 200*0.25*0.04*1.0 = $2. Cap = 200*0.05 = $10
-        # $2 < $10 min → None
+        # $2 not capped (< cap), returned as-is
         size = compute_size(200.0, 0.95, settings)
-        assert size is None
+        assert size == 2.0
 
     def test_large_bankroll(self, settings):
         size = compute_size(100_000.0, 0.95, settings)

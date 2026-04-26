@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     C1_CONFIDENCE_MULTIPLIER_A1: float = 1.0
     C1_CONFIDENCE_MULTIPLIER_A2: float = 0.6
     C1_SIZE_MAX_PCT_BANKROLL: float = 0.05
-    C1_SIZE_MIN_ALERT: float = 10.0
+    C1_SIZE_MIN_ALERT: float = 1.0
     C1_POLL_INTERVAL: int = 60
 
     # C2 Informed Trading
