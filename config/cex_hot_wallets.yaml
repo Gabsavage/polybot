@@ -42,6 +42,10 @@ exchanges:
         label: "Binance Hot Wallet 18"
         verified: true
         source: "polygonscan"
+      - address: "0xf70da97812cb96acdf810712aa562db8dfa3dbef"
+        label: "Binance Hot Wallet (discovered)"
+        verified: false
+        source: "discovered via Iran cluster ground truth validation"
 
   coinbase:
     name: "Coinbase"
