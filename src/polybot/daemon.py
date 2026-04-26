@@ -1,12 +1,14 @@
-"""Polybot unified daemon — bot + C1 + C2 + all indexers in one process."""
+"""Polybot unified daemon — bot + C1 + C2 + all indexers + dashboard in one process."""
 
 import asyncio
+import threading
 import time as time_mod
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, time, timedelta, timezone
 from functools import partial
 
 import structlog
+import uvicorn
 from telegram import BotCommand
 
 from polybot.components.c1_sharp_money import SharpMoneyDetector
@@ -14,6 +16,7 @@ from polybot.components.c2_informed_trading import InformedTradingDetector
 from polybot.components.report import generate_report
 from polybot.components.weekly_report import generate_weekly_report
 from polybot.config import Settings
+from polybot.dashboard.api import app as dashboard_app
 from polybot.indexers.markets_gamma import run as run_markets
 from polybot.indexers.onchain_alchemy import run as run_onchain
 from polybot.indexers.proxy_factory import run as run_proxy
@@ -82,6 +85,16 @@ async def schedule_weekly_report(bot: PolyBot, db_path: str) -> None:
             logger.exception("weekly_report_failed")
 
 
+def _run_dashboard_blocking() -> None:
+    """Run uvicorn in a blocking fashion (for use in a thread)."""
+    uvicorn.run(
+        dashboard_app,
+        host="127.0.0.1",
+        port=8000,
+        log_level="warning",
+    )
+
+
 async def run_scheduled_indexer(
     name: str,
     fn,
@@ -147,6 +160,12 @@ async def main() -> None:
             BotCommand("help", "Liste des commandes"),
         ])
         logger.info("telegram_bot_started")
+
+        dashboard_thread = threading.Thread(
+            target=_run_dashboard_blocking, daemon=True, name="dashboard-api",
+        )
+        dashboard_thread.start()
+        logger.info("dashboard_api_started", host="127.0.0.1", port=8000)
 
         try:
             await asyncio.gather(
