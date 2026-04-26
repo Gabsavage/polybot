@@ -53,7 +53,7 @@ export default function Alerts() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-4xl font-light tracking-tight">Alertes</h1>
+      <h1 className="text-3xl md:text-4xl font-light tracking-tight">Alertes</h1>
 
       <div className="flex flex-col md:flex-row md:items-center gap-4 flex-wrap">
         <div>

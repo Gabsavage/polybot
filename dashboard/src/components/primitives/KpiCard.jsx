@@ -7,7 +7,7 @@ export default function KpiCard({ label, value, valueClass = "", subtitle, extra
         <div className="text-xs uppercase tracking-wider text-text-secondary font-medium">
           {label}
         </div>
-        <div className={`text-4xl font-light tracking-tight ${valueClass}`}>
+        <div className={`text-3xl md:text-4xl font-light tracking-tight ${valueClass}`}>
           {value}
         </div>
         {subtitle && (

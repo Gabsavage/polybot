@@ -49,7 +49,7 @@ export default function WalletDetail() {
       <GlassCard>
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-light tracking-tight">{data.name || "(sans nom)"}</h1>
+            <h1 className="text-3xl md:text-4xl font-light tracking-tight">{data.name || "(sans nom)"}</h1>
             <div className="mt-2">
               <AddressDisplay address={data.address} truncate={false} />
             </div>
