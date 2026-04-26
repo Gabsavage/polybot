@@ -569,6 +569,12 @@ class InformedTradingDetector:
                 feature_lines.append(f"  ✓ Volume Z-score : {zscore:.1f}")
             elif f == "single_dominance":
                 feature_lines.append(f"  ✓ Single dominance : {raw['single_dominance']:.0%}")
+            elif f == "shared_cex_deposit":
+                src = raw.get("shared_cex_deposit_source", "")
+                src_str = f" ({src})" if src else ""
+                feature_lines.append(
+                    f"  ✓ CEX deposit partage : {raw['shared_cex_deposit']:.0%}{src_str}"
+                )
 
         # Alignment
         a_score = alignment.get("alignment_score")
@@ -603,7 +609,7 @@ class InformedTradingDetector:
             price_line,
             vol_line,
             "",
-            f"🧬 Score : <b>{result['score']}/7</b>",
+            f"🧬 Score : <b>{result['score']}/8</b>",
             *feature_lines,
             "",
             align_line,

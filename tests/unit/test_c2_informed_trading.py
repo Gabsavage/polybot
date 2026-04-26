@@ -622,6 +622,8 @@ class TestAlertFormat:
                 "momentum_1h": 0.08,
                 "volume_zscore": 4.2,
                 "single_dominance": 0.3,
+                "shared_cex_deposit": 0.0,
+                "shared_cex_deposit_source": None,
             },
         }
         alignment = {"alignment_score": 1, "momentum_4h": 0.05, "direction": "BUY"}
@@ -636,11 +638,50 @@ class TestAlertFormat:
         )
         assert "C2" in msg
         assert "Will X happen?" in msg
-        assert "5/7" in msg
+        assert "5/8" in msg
         assert "Fresh wallets" in msg
         assert "Suit le mouvement" in msg
         assert "MEDIUM" in msg
         assert "AL_TEST_0001" in msg
+
+    def test_format_shared_cex_line(self, c2, db_path):
+        """shared_cex_deposit in features_passed → CEX deposit line with source."""
+        market = {
+            "condition_id": "cond1",
+            "title": "Test",
+            "event_slug": "test-event",
+            "vol_1h": 1000,
+            "price_now": 0.50,
+            "price_1h_ago": 0.45,
+        }
+        result = {
+            "score": 4,
+            "features_passed": ["shared_cex_deposit"],
+            "raw_values": {
+                "fresh_wallets": 0.1,
+                "top5_concentration": 0.3,
+                "time_to_event": None,
+                "niche_market": False,
+                "momentum_1h": 0.01,
+                "volume_zscore": 1.0,
+                "single_dominance": 0.2,
+                "shared_cex_deposit": 0.67,
+                "shared_cex_deposit_source": "Binance",
+            },
+        }
+        alignment = {"alignment_score": None, "momentum_4h": None, "direction": None}
+
+        msg = c2._format_alert(
+            market=market,
+            result=result,
+            alignment=alignment,
+            risk_score=0.3,
+            risk_category="MEDIUM",
+            alert_id="AL_TEST_0002",
+        )
+        assert "CEX deposit partage" in msg
+        assert "67%" in msg
+        assert "(Binance)" in msg
 
 
 # --- Alert outcomes ---
