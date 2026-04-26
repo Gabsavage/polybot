@@ -24,7 +24,7 @@ app.add_middleware(
 
 
 def get_db():
-    con = duckdb.connect(str(settings.DUCKDB_PATH), read_only=True)
+    con = duckdb.connect(str(settings.DUCKDB_PATH))
     try:
         yield con
     finally:

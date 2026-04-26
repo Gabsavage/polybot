@@ -201,7 +201,7 @@ def client(db_path):
     from polybot.dashboard.api import app, get_db
 
     def override_db():
-        con = duckdb.connect(db_path, read_only=True)
+        con = duckdb.connect(db_path)
         try:
             yield con
         finally:
