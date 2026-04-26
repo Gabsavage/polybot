@@ -479,6 +479,56 @@ def get_wallet_detail(con: DB, address: str):
     }
 
 
+@app.get("/api/wallets/{address}/trades")
+def get_wallet_trades(
+    con: DB,
+    address: str,
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    rows = con.execute(
+        "SELECT t.transaction_hash, t.timestamp_ts, t.condition_id, "
+        "       m.title, m.slug, t.side, t.outcome, t.size_usd, t.price, "
+        "       m.status, m.active, "
+        "       ao.resolution_outcome, ao.was_direction_correct "
+        "FROM trades t "
+        "LEFT JOIN markets m ON t.condition_id = m.condition_id "
+        "LEFT JOIN alerts a ON a.wallet_address = t.proxy_wallet "
+        "                  AND a.condition_id = t.condition_id "
+        "LEFT JOIN alert_outcomes ao ON a.alert_id = ao.alert_id "
+        "WHERE t.proxy_wallet = ? "
+        "ORDER BY t.timestamp_ts DESC, a.emitted_at DESC",
+        [address],
+    ).fetchall()
+
+    # Dedup by transaction_hash, keep first occurrence (most recent due to ORDER BY)
+    seen: dict = {}
+    for r in rows:
+        tx = r[0]
+        if tx not in seen:
+            seen[tx] = r
+        if len(seen) >= limit:
+            break
+
+    return [
+        {
+            "transaction_hash": r[0],
+            "timestamp_ts": str(r[1]) if r[1] else None,
+            "condition_id": r[2],
+            "market_title": r[3],
+            "market_slug": r[4],
+            "side": r[5],
+            "outcome": r[6],
+            "size_usd": float(r[7]) if r[7] is not None else None,
+            "price": float(r[8]) if r[8] is not None else None,
+            "status": r[9],
+            "active": r[10],
+            "resolution_outcome": r[11],
+            "was_direction_correct": r[12],
+        }
+        for r in seen.values()
+    ]
+
+
 @app.get("/api/c2/features")
 def get_c2_features(con: DB, condition_id: str = Query(...)):
     rows = con.execute(

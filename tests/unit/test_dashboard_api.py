@@ -465,3 +465,69 @@ class TestWalletDetailEndpoint:
         assert data["cluster"]["cluster_id"] == "clu_xyz"
         assert data["cluster"]["size"] == 12
         assert data["cluster"]["cex_source"] == "Binance"
+
+
+class TestWalletTradesEndpoint:
+    def test_returns_recent_trades_for_wallet(self, client, db_path):
+        con = duckdb.connect(db_path)
+        # 1 wallet, 5 trades, descending timestamp
+        con.execute(
+            "INSERT INTO tracked_wallets (address, tier, active) "
+            "VALUES ('0xWA', 'A', TRUE)"
+        )
+        con.execute(
+            "INSERT INTO markets (condition_id, title, slug, active) "
+            "VALUES ('cond_z', 'Market Z', 'market-z', TRUE)"
+        )
+        for i in range(5):
+            con.execute(
+                "INSERT INTO trades "
+                "(transaction_hash, proxy_wallet, condition_id, asset_id, "
+                " side, size_usd, price, timestamp_unix, timestamp_ts) "
+                "VALUES (?, '0xWA', 'cond_z', 'a_z', 'YES', 100, 0.5, ?, ?)",
+                [f"tx_{i}", 1700000000 + i, f"2026-04-{20 + i:02d} 10:00:00"],
+            )
+        con.close()
+
+        resp = client.get("/api/wallets/0xWA/trades?limit=3")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 3
+        # Most recent first
+        assert data[0]["transaction_hash"] == "tx_4"
+        assert data[1]["transaction_hash"] == "tx_3"
+        assert data[2]["transaction_hash"] == "tx_2"
+        assert data[0]["market_title"] == "Market Z"
+
+    def test_dedupes_when_multiple_alerts_per_market(self, client, db_path):
+        con = duckdb.connect(db_path)
+        con.execute(
+            "INSERT INTO tracked_wallets (address, tier, active) VALUES ('0xWB', 'A', TRUE)"
+        )
+        con.execute(
+            "INSERT INTO markets (condition_id, title, slug, active) "
+            "VALUES ('cond_y', 'Market Y', 'market-y', TRUE)"
+        )
+        con.execute(
+            "INSERT INTO trades "
+            "(transaction_hash, proxy_wallet, condition_id, asset_id, "
+            " side, size_usd, price, timestamp_unix, timestamp_ts) "
+            "VALUES ('tx_only', '0xWB', 'cond_y', 'a_y', 'YES', 100, 0.5, "
+            "        1700000000, '2026-04-26 10:00:00')"
+        )
+        # Two alerts for same wallet+market → cross-join would produce 2 trade rows
+        con.execute(
+            "INSERT INTO alerts "
+            "(alert_id, component, emitted_at, wallet_address, condition_id, "
+            " side, size_usd, price, score) "
+            "VALUES ('al_1', 'C2', CURRENT_TIMESTAMP, '0xWB', 'cond_y', 'YES', 50, 0.5, 7), "
+            "       ('al_2', 'C2', CURRENT_TIMESTAMP, '0xWB', 'cond_y', 'YES', 50, 0.5, 8)"
+        )
+        con.close()
+
+        resp = client.get("/api/wallets/0xWB/trades?limit=10")
+        assert resp.status_code == 200
+        data = resp.json()
+        # Should still return only 1 trade row despite 2 alerts joining
+        assert len(data) == 1
+        assert data[0]["transaction_hash"] == "tx_only"
