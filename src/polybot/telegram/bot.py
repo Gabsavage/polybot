@@ -47,6 +47,7 @@ class PolyBot:
         self.app.add_handler(CommandHandler("help", self._cmd_help))
         self.app.add_handler(CommandHandler("recent", self._cmd_recent))
         self.app.add_handler(CommandHandler("toggle", self._cmd_toggle))
+        self.app.add_handler(CommandHandler("audit", self._cmd_audit))
         self.app.add_handler(CallbackQueryHandler(self._cb_alert_action))
 
     async def send_alert(
@@ -315,19 +316,93 @@ class PolyBot:
     async def _cmd_toggle(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
+        from polybot.orchestrator.kill_switches import VALID_TARGETS, set_kill_switch
+
         args = context.args or []
-        if not args or args[0].lower() != "shadow":
-            await update.message.reply_text("Usage: /toggle shadow")
+        if not args:
+            await update.message.reply_text(
+                "Usage: /toggle shadow | /toggle <target> on|off [raison]",
+                parse_mode="HTML",
+            )
             return
 
-        self.settings.SHADOW_MODE = not self.settings.SHADOW_MODE
-        state = "ON" if self.settings.SHADOW_MODE else "OFF"
-        channel = "#ops" if self.settings.SHADOW_MODE else "#alerts"
+        target = args[0].lower()
+
+        if target == "shadow":
+            self.settings.SHADOW_MODE = not self.settings.SHADOW_MODE
+            state = "ON" if self.settings.SHADOW_MODE else "OFF"
+            channel = "#ops" if self.settings.SHADOW_MODE else "#alerts"
+            await update.message.reply_text(
+                f"Shadow mode: <b>{state}</b> — alertes dans {channel}",
+                parse_mode="HTML",
+            )
+            logger.info("shadow_mode_toggled", shadow_mode=self.settings.SHADOW_MODE)
+            return
+
+        if target not in VALID_TARGETS:
+            await update.message.reply_text(
+                f"Target invalide. Valides: shadow, {', '.join(sorted(VALID_TARGETS))}",
+            )
+            return
+
+        if len(args) < 2 or args[1].lower() not in ("on", "off"):
+            await update.message.reply_text("Usage: /toggle <target> on|off [raison]")
+            return
+
+        action = args[1].lower()
+        enabled = action == "off"  # "off" means kill switch ON (component disabled)
+        reason = " ".join(args[2:]) if len(args) > 2 else None
+
+        set_kill_switch(self.db_path, target, enabled=enabled, reason=reason, actor="manual")
+
+        state_label = "OFF (kill switch actif)" if enabled else "ON (kill switch levé)"
         await update.message.reply_text(
-            f"Shadow mode: <b>{state}</b> — alertes dans {channel}",
+            f"<b>{target}</b> : {state_label}" + (f"\nRaison: {reason}" if reason else ""),
             parse_mode="HTML",
         )
-        logger.info("shadow_mode_toggled", shadow_mode=self.settings.SHADOW_MODE)
+        await self.send_alert(
+            "ops",
+            f"Kill switch <b>{target}</b> → {state_label}" + (f"\nRaison: {reason}" if reason else ""),
+        )
+
+    async def _cmd_audit(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        from polybot.db.connection import db_read_with_retry
+
+        args = context.args or []
+        n = int(args[0]) if args and args[0].isdigit() else 10
+
+        def _read(con):
+            return con.execute(
+                "SELECT event_type, target, action, reason, actor, created_at "
+                "FROM audit_log ORDER BY created_at DESC LIMIT ?",
+                [n],
+            ).fetchall()
+
+        rows = db_read_with_retry(self.db_path, _read)
+        if not rows:
+            await update.message.reply_text("Audit log vide.")
+            return
+
+        icons = {
+            "kill_switch": "\u2699\ufe0f",
+            "rate_limit": "\u26a0\ufe0f",
+            "circuit_breaker": "\U0001f527",
+            "config_change": "\U0001f4b0",
+        }
+
+        lines = [f"<b>Audit Log ({len(rows)} derniers)</b>\n"]
+        for event_type, target, action, reason, actor, created_at in rows:
+            icon = icons.get(event_type, "\U0001f4cb")
+            ts = created_at.strftime("%H:%M") if created_at else "?"
+            line = f"{icon} {ts} — {event_type} <b>{target}</b> {action}"
+            if reason:
+                line += f' "{reason}"'
+            line += f" ({actor})"
+            lines.append(line)
+
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
     async def _cmd_help(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -341,6 +416,8 @@ class PolyBot:
             "/risk &lt;slug&gt; — Analyse resolution risk d'un marché\n"
             "/recent [N] — N dernières alertes (défaut 5)\n"
             "/toggle shadow — Basculer shadow mode on/off\n"
+            "/toggle &lt;target&gt; on|off — Kill switch (c1, c2, c3, all_alerts, trades, markets, onchain, resolutions)\n"
+            "/audit [N] — Derniers N événements d'audit (défaut 10)\n"
             "/help — Cette aide",
             parse_mode="HTML",
         )
