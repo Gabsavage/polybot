@@ -324,9 +324,22 @@ class SharpMoneyDetector:
             alert_id=alert_id,
         )
 
+        from polybot.orchestrator.kill_switches import is_component_enabled
+        from polybot.orchestrator.rate_limits import check_rate_limit, increment_counter
+
+        if not is_component_enabled(self.db_path, "c1"):
+            logger.info("c1_killed", alert_id=alert_id)
+            return
+
+        if not check_rate_limit(self.db_path, "c1"):
+            logger.warning("c1_rate_limit_exceeded", alert_id=alert_id)
+            return
+
         # Route based on shadow mode
         topic = "ops" if self.settings.SHADOW_MODE else "alerts"
         msg_id = await self.bot.send_alert(topic, message, reply_markup=keyboard)
+
+        increment_counter(self.db_path, "c1")
 
         # Also send to #risk if CRITICAL
         if risk_category == "CRITICAL":
