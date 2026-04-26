@@ -488,7 +488,7 @@ def get_wallet_trades(
     rows = con.execute(
         "SELECT t.transaction_hash, t.timestamp_ts, t.condition_id, "
         "       m.title, m.slug, t.side, t.outcome, t.size_usd, t.price, "
-        "       m.status, m.active, "
+        "       m.resolved, m.active, "
         "       ao.resolution_outcome, ao.was_direction_correct "
         "FROM trades t "
         "LEFT JOIN markets m ON t.condition_id = m.condition_id "
@@ -520,7 +520,7 @@ def get_wallet_trades(
             "outcome": r[6],
             "size_usd": float(r[7]) if r[7] is not None else None,
             "price": float(r[8]) if r[8] is not None else None,
-            "status": r[9],
+            "resolved": r[9],
             "active": r[10],
             "resolution_outcome": r[11],
             "was_direction_correct": r[12],

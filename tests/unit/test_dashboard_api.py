@@ -154,6 +154,7 @@ def db_path(tmp_path):
             title VARCHAR, slug VARCHAR, event_slug VARCHAR,
             volume_24h DECIMAL(18,2), liquidity_usd DECIMAL(18,2),
             end_date TIMESTAMP, active BOOLEAN DEFAULT TRUE,
+            resolved BOOLEAN,
             volume_cumulative_usd DECIMAL(18,2),
             category VARCHAR, status VARCHAR,
             last_synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
