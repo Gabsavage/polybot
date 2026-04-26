@@ -598,7 +598,8 @@ class InformedTradingDetector:
                 logger.debug("c2_dedup_blocked", condition_id=cid[:16])
                 continue
 
-            if not self.check_rate_limit():
+            from polybot.orchestrator.rate_limits import check_rate_limit as check_rl
+            if not check_rl(self.db_path, "c2"):
                 logger.info("c2_rate_limit_reached")
                 break
 
@@ -650,6 +651,12 @@ class InformedTradingDetector:
         if not self.bot:
             return
 
+        from polybot.orchestrator.kill_switches import is_component_enabled
+
+        if not is_component_enabled(self.db_path, "c2"):
+            logger.info("c2_killed", alert_id=alert["alert_id"])
+            return
+
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
         message = self._format_alert(
@@ -674,6 +681,9 @@ class InformedTradingDetector:
         # Route based on shadow mode
         topic = "ops" if self.settings.SHADOW_MODE else "alerts"
         msg_id = await self.bot.send_alert(topic, message, reply_markup=keyboard)
+
+        from polybot.orchestrator.rate_limits import increment_counter
+        increment_counter(self.db_path, "c2")
 
         if msg_id:
             db_write_with_retry(
