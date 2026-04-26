@@ -368,6 +368,7 @@ def get_clusters(con: DB):
 
 @app.get("/api/wallets/{address}")
 def get_wallet_detail(con: DB, address: str):
+    # Bloc 1 : info wallet + métriques trades
     row = con.execute(
         "SELECT w.address, w.notes, w.tier, w.active, w.tier_a_confidence, "
         "       w.honeypot_flag, w.added_at, w.source, "
@@ -384,7 +385,98 @@ def get_wallet_detail(con: DB, address: str):
     ).fetchone()
     if row is None or row[0] is None:
         raise HTTPException(status_code=404, detail="Wallet not found")
-    return {"address": row[0]}  # incomplete — Task 5 will extend
+
+    # Bloc 2 : alertes résolues + win rate + Shadow P&L
+    perf = con.execute(
+        "SELECT "
+        " COUNT(*) FILTER (WHERE ao.resolution_outcome NOT IN ('PENDING')) AS resolved, "
+        " COUNT(*) FILTER (WHERE ao.was_direction_correct = TRUE) AS correct, "
+        " SUM(ao.shadow_pnl_simulated) FILTER (WHERE ao.resolution_outcome NOT IN ('PENDING')) AS pnl "
+        "FROM alerts a "
+        "LEFT JOIN alert_outcomes ao ON a.alert_id = ao.alert_id "
+        "WHERE a.wallet_address = ?",
+        [address],
+    ).fetchone()
+    resolved = perf[0] or 0
+    correct = perf[1] or 0
+    pnl = float(perf[2]) if perf[2] is not None else None
+    win_rate = (correct / resolved) if resolved > 0 else None
+
+    # Bloc 3 : pnl_series (90 derniers jours, agrégé par jour puis cumulé)
+    pnl_series_rows = con.execute(
+        "WITH daily AS ("
+        "  SELECT DATE_TRUNC('day', a.emitted_at)::DATE AS day, "
+        "         SUM(ao.shadow_pnl_simulated) AS daily_pnl "
+        "  FROM alerts a "
+        "  JOIN alert_outcomes ao ON a.alert_id = ao.alert_id "
+        "  WHERE a.wallet_address = ? "
+        "    AND ao.resolution_outcome NOT IN ('PENDING') "
+        "    AND a.emitted_at >= CURRENT_DATE - INTERVAL '90 DAY' "
+        "  GROUP BY day"
+        ") "
+        "SELECT day, SUM(daily_pnl) OVER (ORDER BY day) AS cum_pnl "
+        "FROM daily ORDER BY day",
+        [address],
+    ).fetchall()
+
+    # Bloc 4 : cex_funding
+    cex_row = con.execute(
+        "SELECT cex_source, deposit_address, confidence, method "
+        "FROM cex_funding_map WHERE wallet_address = ?",
+        [address],
+    ).fetchone()
+
+    # Bloc 5 : cluster info
+    cluster_row = con.execute(
+        "SELECT m.cluster_id, c.size, c.funded_by, c.cex_source "
+        "FROM wallet_cluster_members m "
+        "JOIN wallet_clusters c ON m.cluster_id = c.cluster_id "
+        "WHERE m.wallet_address = ?",
+        [address],
+    ).fetchone()
+
+    return {
+        "address": row[0],
+        "name": row[1],
+        "tier": row[2],
+        "active": row[3],
+        "tier_a_confidence": float(row[4]) if row[4] is not None else None,
+        "honeypot_flag": row[5],
+        "added_at": str(row[6]) if row[6] else None,
+        "source": row[7],
+        "trades_total": row[8] or 0,
+        "last_trade": str(row[9]) if row[9] else None,
+        "avg_trade_size": float(row[10]) if row[10] is not None else None,
+        "total_volume": float(row[11]) if row[11] is not None else 0.0,
+        "resolved": resolved,
+        "correct": correct,
+        "pnl": pnl,
+        "win_rate": float(win_rate) if win_rate is not None else None,
+        "pnl_series": [
+            {"day": str(r[0]), "cum_pnl": float(r[1]) if r[1] is not None else 0.0}
+            for r in pnl_series_rows
+        ],
+        "cex_funding": (
+            {
+                "cex_source": cex_row[0],
+                "deposit_address": cex_row[1],
+                "confidence": float(cex_row[2]) if cex_row[2] is not None else None,
+                "method": cex_row[3],
+            }
+            if cex_row
+            else None
+        ),
+        "cluster": (
+            {
+                "cluster_id": cluster_row[0],
+                "size": cluster_row[1],
+                "funded_by": cluster_row[2],
+                "cex_source": cluster_row[3],
+            }
+            if cluster_row
+            else None
+        ),
+    }
 
 
 @app.get("/api/c2/features")

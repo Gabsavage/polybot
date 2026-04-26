@@ -404,3 +404,64 @@ class TestWalletDetailEndpoint:
         resp = client.get("/api/wallets/0xDEADBEEF")
         assert resp.status_code == 404
         assert resp.json()["detail"] == "Wallet not found"
+
+    def test_returns_full_wallet_with_metrics(self, client, db_path):
+        _seed_alerts(db_path)  # this seeds 0xwallet_0..2 with 4 trades each + alerts
+        # Set notes (= name) for wallet 0
+        con = duckdb.connect(db_path)
+        con.execute("UPDATE tracked_wallets SET notes='TestUser' WHERE address='0xwallet_0'")
+        con.close()
+
+        resp = client.get("/api/wallets/0xwallet_0")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["address"] == "0xwallet_0"
+        assert data["name"] == "TestUser"
+        assert data["tier"] == "A"
+        assert data["active"] is True
+        assert data["trades_total"] == 4
+        # 0xwallet_0 has 1 alert (a1) which is correct → resolved=1, correct=1, pnl=25.0
+        assert data["resolved"] == 1
+        assert data["correct"] == 1
+        assert data["win_rate"] == pytest.approx(1.0, abs=0.01)
+        assert data["pnl"] == pytest.approx(25.0, abs=0.01)
+        assert isinstance(data["pnl_series"], list)
+        assert data["cex_funding"] is None
+        assert data["cluster"] is None
+
+    def test_includes_cex_funding_when_present(self, client, db_path):
+        _seed_alerts(db_path)
+        con = duckdb.connect(db_path)
+        con.execute(
+            "INSERT INTO cex_funding_map "
+            "(wallet_address, cex_source, deposit_address, confidence, method) "
+            "VALUES ('0xwallet_0', 'Binance', '0xdeposit_abc', 0.95, 'deposit_address_match')"
+        )
+        con.close()
+        resp = client.get("/api/wallets/0xwallet_0")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["cex_funding"] is not None
+        assert data["cex_funding"]["cex_source"] == "Binance"
+        assert data["cex_funding"]["confidence"] == pytest.approx(0.95)
+        assert data["cex_funding"]["method"] == "deposit_address_match"
+
+    def test_includes_cluster_when_member(self, client, db_path):
+        _seed_alerts(db_path)
+        con = duckdb.connect(db_path)
+        con.execute(
+            "INSERT INTO wallet_clusters (cluster_id, funded_by, cex_source, size) "
+            "VALUES ('clu_xyz', '0xfundX', 'Binance', 12)"
+        )
+        con.execute(
+            "INSERT INTO wallet_cluster_members (wallet_address, cluster_id, funded_by) "
+            "VALUES ('0xwallet_0', 'clu_xyz', '0xfundX')"
+        )
+        con.close()
+        resp = client.get("/api/wallets/0xwallet_0")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["cluster"] is not None
+        assert data["cluster"]["cluster_id"] == "clu_xyz"
+        assert data["cluster"]["size"] == 12
+        assert data["cluster"]["cex_source"] == "Binance"
