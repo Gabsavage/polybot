@@ -829,6 +829,11 @@ class InformedTradingDetector:
         while True:
             start = time.monotonic()
             try:
+                # TODO: wrap self.scan_once() in run_in_executor (see scheduler-drift
+                # follow-up). scan_once is sync and runs DB queries + external API
+                # calls on the main loop, blocking other coroutines for the duration
+                # of each scan. Daemon's _wait_until is resilient to this drift, but
+                # other awaits (Telegram polling, indexers) still suffer.
                 alerts = self.scan_once()
                 for alert in alerts:
                     await self._emit_telegram(alert)
