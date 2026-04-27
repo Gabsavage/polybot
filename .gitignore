@@ -31,3 +31,4 @@ build/
 # IDE
 .vscode/
 .idea/
+worktrees/
