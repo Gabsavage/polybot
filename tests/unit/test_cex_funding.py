@@ -482,3 +482,163 @@ class TestRun:
         total = con.execute("SELECT COUNT(*) FROM cex_funding_map").fetchone()[0]
         con.close()
         assert total == 1
+
+
+class TestBackoffDelay:
+    def test_exponential_growth(self):
+        from polybot.indexers.cex_funding import (
+            BACKOFF_BASE,
+            BACKOFF_MAX,
+            _backoff_delay,
+        )
+
+        # Jitter is 0-1s, so each delay sits in [base*2^n, base*2^n + 1].
+        for attempt in range(5):
+            d = _backoff_delay(attempt)
+            lo = BACKOFF_BASE * (2**attempt)
+            assert lo <= d <= min(lo + 1.0, BACKOFF_MAX)
+
+    def test_capped_at_max(self):
+        from polybot.indexers.cex_funding import BACKOFF_MAX, _backoff_delay
+
+        # At attempt 10, base*2^10 = 5120 → must clamp to BACKOFF_MAX.
+        for _ in range(20):
+            assert _backoff_delay(10) == BACKOFF_MAX
+
+
+class TestRpcCallBackoff:
+    def test_5xx_uses_exponential_backoff(self):
+        from polybot.indexers.cex_funding import RPCError, rpc_call
+
+        client = MagicMock()
+        client.post.return_value = httpx.Response(
+            503, request=httpx.Request("POST", "http://test")
+        )
+
+        sleeps: list[float] = []
+        with patch(
+            "polybot.indexers.cex_funding.time.sleep",
+            side_effect=lambda s: sleeps.append(s),
+        ):
+            with pytest.raises(RPCError):
+                rpc_call(client, "http://test", "alchemy_getAssetTransfers", [])
+
+        # 5 attempts → 5 sleeps. Each one must be strictly greater than the prev
+        # base (5, 10, 20, 40, 80) — proves exponential, not fixed.
+        assert len(sleeps) == 5
+        bases = [5.0, 10.0, 20.0, 40.0, 80.0]
+        for s, base in zip(sleeps, bases):
+            assert base <= s <= base + 1.0
+
+
+class TestRunCycleAbort:
+    def test_aborts_after_consecutive_failures(self, db_path):
+        """After MAX_CONSECUTIVE_WALLET_FAILURES, the cycle aborts and remaining
+        wallets are not attempted."""
+        from polybot.indexers.cex_funding import (
+            MAX_CONSECUTIVE_WALLET_FAILURES,
+            run,
+        )
+
+        # Seed enough wallets that abort happens before exhaustion.
+        n_wallets = MAX_CONSECUTIVE_WALLET_FAILURES + 5
+        _seed_trades(
+            db_path,
+            [(f"0xw{i:02d}", 1000.0 - i) for i in range(n_wallets)],
+        )
+
+        call_log: list[str] = []
+
+        def mock_post(url, **kwargs):
+            body = kwargs.get("json", {})
+            params = body.get("params", [{}])
+            to_addr = params[0].get("toAddress", "") if params else ""
+            call_log.append(to_addr)
+            # Always return 503 — every wallet fails.
+            return httpx.Response(503, request=httpx.Request("POST", "http://test"))
+
+        with (
+            patch("polybot.indexers.cex_funding.httpx.Client") as mock_cls,
+            patch("polybot.indexers.cex_funding.time.sleep"),
+        ):
+            mock_client = MagicMock()
+            mock_client.post.side_effect = mock_post
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_cls.return_value = mock_client
+
+            run(db_path, "http://test", max_wallets=n_wallets)
+
+        # We should have attempted exactly MAX_CONSECUTIVE_WALLET_FAILURES
+        # distinct wallets (with retries each), then aborted.
+        attempted = list(dict.fromkeys(call_log))
+        assert len(attempted) == MAX_CONSECUTIVE_WALLET_FAILURES
+
+        # indexer_state must surface the abort as a failure (errors_24h visibility).
+        con = duckdb.connect(db_path)
+        row = con.execute(
+            "SELECT last_run_status, last_error FROM indexer_state "
+            "WHERE indexer_name = 'cex_funding'"
+        ).fetchone()
+        con.close()
+        assert row[0] == "failed"
+        assert row[1] == "cycle_aborted_consecutive_failures"
+
+    def test_consecutive_counter_resets_on_success(self, db_path):
+        """A successful trace between two failures must reset the counter, so
+        the cycle does not abort prematurely on intermittent errors."""
+        from polybot.indexers.cex_funding import run
+
+        _seed_cex_hot_wallet(db_path, "0xbinance_hw", "Binance")
+
+        # 12 wallets: fail, fail, fail, fail, fail, OK, fail x6 = 6 trailing
+        # failures, below the threshold of 10. Cycle must finish all 12.
+        n_wallets = 12
+        _seed_trades(
+            db_path,
+            [(f"0xw{i:02d}", 1000.0 - i) for i in range(n_wallets)],
+        )
+        ok_addr = "0xw05"
+
+        def mock_post(url, **kwargs):
+            body = kwargs.get("json", {})
+            params = body.get("params", [{}])
+            to_addr = params[0].get("toAddress", "") if params else ""
+            if to_addr == ok_addr:
+                return _mock_rpc_response(
+                    _alchemy_transfers_response(
+                        [
+                            {
+                                "from": "0xbinance_hw",
+                                "to": ok_addr,
+                                "value": 1000.0,
+                                "blockNum": "0x1",
+                            },
+                        ]
+                    )
+                )
+            if to_addr == "0xbinance_hw":
+                return _mock_rpc_response(_alchemy_transfers_response([]))
+            return httpx.Response(503, request=httpx.Request("POST", "http://test"))
+
+        with (
+            patch("polybot.indexers.cex_funding.httpx.Client") as mock_cls,
+            patch("polybot.indexers.cex_funding.time.sleep"),
+        ):
+            mock_client = MagicMock()
+            mock_client.post.side_effect = mock_post
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_cls.return_value = mock_client
+
+            run(db_path, "http://test", max_wallets=n_wallets)
+
+        con = duckdb.connect(db_path)
+        status = con.execute(
+            "SELECT last_run_status FROM indexer_state WHERE indexer_name = 'cex_funding'"
+        ).fetchone()[0]
+        traced = con.execute("SELECT COUNT(*) FROM cex_funding_map").fetchone()[0]
+        con.close()
+        # Cycle finishes (not aborted), 1 wallet successfully traced.
+        assert status == "success"
+        assert traced == 1

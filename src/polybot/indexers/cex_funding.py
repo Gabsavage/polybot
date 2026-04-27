@@ -1,5 +1,6 @@
 """Trace CEX funding source for wallets via USDC transfers on Polygon."""
 
+import random
 import time
 
 import httpx
@@ -12,6 +13,21 @@ logger = structlog.get_logger()
 REQUEST_TIMEOUT = 15.0
 MAX_RPC_RETRIES = 5
 RATE_LIMIT_SLEEP = 0.1
+
+# Exponential backoff for RPC retries: 5s, 10s, 20s, 40s, 80s (cap 300s) + jitter.
+BACKOFF_BASE = 5.0
+BACKOFF_MAX = 300.0
+
+# Abort the cycle after this many wallets fail back-to-back. During an Alchemy
+# 503 storm there's no point burning retries on every remaining wallet — they
+# all hit the same upstream and would tie up the single-writer executor for
+# 30+ minutes. The aborted wallets are picked up next cycle (1h later).
+MAX_CONSECUTIVE_WALLET_FAILURES = 10
+
+
+def _backoff_delay(attempt: int) -> float:
+    """Exponential backoff (base * 2**attempt) + 0-1s jitter, capped at BACKOFF_MAX."""
+    return min(BACKOFF_BASE * (2**attempt) + random.uniform(0.0, 1.0), BACKOFF_MAX)
 
 USDC_POLYGON = "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359"
 USDC_E_POLYGON = "0x2791bca1f2de4661ed88a30c99a7a9449aa84174"
@@ -30,7 +46,7 @@ def rpc_call(
     method: str,
     params: list | None = None,
 ) -> dict:
-    """JSON-RPC call with retry on 429/5xx."""
+    """JSON-RPC call with exponential-backoff retry on 429/5xx/network errors."""
     last_exc: Exception | None = None
     for attempt in range(MAX_RPC_RETRIES):
         try:
@@ -44,13 +60,26 @@ def rpc_call(
                 },
             )
             if resp.status_code == 429:
-                delay = 2**attempt
-                logger.warning("rpc_429", method=method, retry_in=delay)
+                delay = _backoff_delay(attempt)
+                logger.warning(
+                    "cex_funding_backoff",
+                    reason="rpc_429",
+                    method=method,
+                    attempt=attempt + 1,
+                    delay_s=round(delay, 1),
+                )
                 time.sleep(delay)
                 continue
             if resp.status_code >= 500:
-                logger.warning("rpc_5xx", status=resp.status_code)
-                time.sleep(2)
+                delay = _backoff_delay(attempt)
+                logger.warning(
+                    "cex_funding_backoff",
+                    reason="rpc_5xx",
+                    status=resp.status_code,
+                    attempt=attempt + 1,
+                    delay_s=round(delay, 1),
+                )
+                time.sleep(delay)
                 continue
             resp.raise_for_status()
             data = resp.json()
@@ -59,8 +88,14 @@ def rpc_call(
             return data
         except (httpx.TimeoutException, httpx.ConnectError) as e:
             last_exc = e
-            delay = 2**attempt
-            logger.warning("rpc_network_error", error=str(e)[:100], retry_in=delay)
+            delay = _backoff_delay(attempt)
+            logger.warning(
+                "cex_funding_backoff",
+                reason="rpc_network_error",
+                error=str(e)[:100],
+                attempt=attempt + 1,
+                delay_s=round(delay, 1),
+            )
             time.sleep(delay)
 
     msg = f"RPC {method} failed after {MAX_RPC_RETRIES} retries"
@@ -272,14 +307,17 @@ def run(db_path: str, alchemy_url: str, max_wallets: int = 100) -> int:
     logger.info("cex_funding_starting", untraced=len(wallets))
     cex_matched = 0
     traced = 0
+    consecutive_failures = 0
+    aborted = False
 
     with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
-        for wallet in wallets:
+        for idx, wallet in enumerate(wallets):
             try:
                 hops = trace_funding_hops(client, alchemy_url, wallet)
                 cex_result = identify_cex(db_path, hops["funded_by"], hops["funded_by_hop2"])
                 insert_mapping(db_path, wallet, hops, cex_result)
                 traced += 1
+                consecutive_failures = 0
                 if cex_result:
                     cex_matched += 1
                 logger.info(
@@ -289,19 +327,32 @@ def run(db_path: str, alchemy_url: str, max_wallets: int = 100) -> int:
                     method=cex_result["method"] if cex_result else None,
                 )
             except Exception as e:
+                consecutive_failures += 1
                 logger.warning(
                     "cex_funding_wallet_error",
                     wallet=wallet[:12],
                     error=str(e)[:200],
                 )
+                if consecutive_failures >= MAX_CONSECUTIVE_WALLET_FAILURES:
+                    logger.warning(
+                        "cex_funding_cycle_aborted",
+                        processed=idx + 1,
+                        total=len(wallets),
+                        consecutive_failures=consecutive_failures,
+                    )
+                    aborted = True
+                    break
 
     duration_ms = int((time.monotonic() - start_time) * 1000)
-    update_indexer_state(db_path, "success", cex_matched, duration_ms)
+    status = "failed" if aborted else "success"
+    error = "cycle_aborted_consecutive_failures" if aborted else None
+    update_indexer_state(db_path, status, cex_matched, duration_ms, error)
     logger.info(
         "cex_funding_complete",
         traced=traced,
         cex_matched=cex_matched,
         duration_ms=duration_ms,
+        aborted=aborted,
     )
     return cex_matched
 
