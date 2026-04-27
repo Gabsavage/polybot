@@ -1,3 +1,4 @@
+import { useState } from "react";
 import useSWR from "swr";
 import { useParams, Link } from "react-router-dom";
 import { ExternalLink, ArrowLeft, Inbox } from "lucide-react";
@@ -9,6 +10,7 @@ import EmptyState from "../components/primitives/EmptyState";
 import ErrorState from "../components/primitives/ErrorState";
 import SkeletonList from "../components/primitives/SkeletonList";
 import StatusBadge from "../components/primitives/StatusBadge";
+import FilterPills from "../components/primitives/FilterPills";
 import ChartArea from "../components/charts/ChartArea";
 import { formatUSD, formatPct, formatRelative } from "../lib/format";
 import { pnlColor, sideColor } from "../lib/colors";
@@ -22,6 +24,8 @@ export default function WalletDetail() {
   const { address } = useParams();
   const { data, error, isLoading, mutate } = useSWR(urls.walletDetail(address));
   const { data: trades } = useSWR(urls.walletTrades(address, 100));
+  const [categoryFilter, setCategoryFilter] = useState(null);
+  const [sideFilter, setSideFilter] = useState(null);
 
   if (error) {
     if (error.status === 404) {
@@ -154,43 +158,107 @@ export default function WalletDetail() {
 
       <div className="flex flex-col gap-3">
         <h2 className="text-xl font-semibold">Trades récents</h2>
+        {trades && trades.length > 0 && (
+          <div className="flex flex-col md:flex-row md:items-center gap-4 flex-wrap">
+            <div>
+              <div className="text-xs uppercase tracking-wider text-text-secondary mb-1">Catégorie</div>
+              <FilterPills
+                options={[
+                  { value: null, label: "Toutes" },
+                  ...Array.from(
+                    new Set(trades.map((t) => t.category).filter(Boolean))
+                  )
+                    .sort()
+                    .map((c) => ({ value: c, label: c })),
+                ]}
+                value={categoryFilter}
+                onChange={setCategoryFilter}
+              />
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-text-secondary mb-1">Side</div>
+              <FilterPills
+                options={[
+                  { value: null, label: "Tous" },
+                  { value: "BUY", label: "BUY" },
+                  { value: "SELL", label: "SELL" },
+                ]}
+                value={sideFilter}
+                onChange={setSideFilter}
+              />
+            </div>
+          </div>
+        )}
         <GlassCard className="overflow-x-auto">
           {!trades ? (
             <SkeletonList count={5} height={32} />
           ) : trades.length === 0 ? (
             <EmptyState icon={Inbox} message="Aucun trade enregistré" />
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs uppercase tracking-wider text-text-secondary">
-                  <th className="pb-2">Date</th>
-                  <th className="pb-2">Marché</th>
-                  <th className="pb-2">Direction</th>
-                  <th className="pb-2 text-right">Size</th>
-                  <th className="pb-2 text-right">Prix</th>
-                  <th className="pb-2 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trades.map((t) => (
-                  <tr key={t.transaction_hash} className="border-t border-white/[0.04]">
-                    <td className="py-2 text-text-secondary whitespace-nowrap">
-                      {formatRelative(t.timestamp_ts)}
-                    </td>
-                    <td className="py-2 max-w-xs truncate">{t.market_title || "—"}</td>
-                    <td className={`py-2 font-medium ${sideColor(t.outcome)}`}>
-                      {t.side} {t.outcome || "—"}
-                    </td>
-                    <td className="py-2 text-right">{formatUSD(t.size_usd)}</td>
-                    <td className="py-2 text-right">{t.price?.toFixed(2) ?? "—"}</td>
-                    <td className="py-2 text-right">
-                      <StatusBadge status={tradeStatus(t)} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          ) : (() => {
+              const filtered = trades.filter((t) => {
+                if (categoryFilter && t.category !== categoryFilter) return false;
+                if (sideFilter && t.side !== sideFilter) return false;
+                return true;
+              });
+              if (filtered.length === 0) {
+                return <EmptyState icon={Inbox} message="Aucun trade pour ces filtres" />;
+              }
+              return (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-text-secondary">
+                      <th className="pb-2">Date</th>
+                      <th className="pb-2">Marché</th>
+                      <th className="pb-2">Catégorie</th>
+                      <th className="pb-2">Direction</th>
+                      <th className="pb-2 text-right">Size</th>
+                      <th className="pb-2 text-right">Prix</th>
+                      <th className="pb-2 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((t) => {
+                      const polymarketUrl = t.market_slug
+                        ? `https://polymarket.com/event/${t.market_slug}`
+                        : null;
+                      return (
+                        <tr key={t.transaction_hash} className="border-t border-white/[0.04]">
+                          <td className="py-2 text-text-secondary whitespace-nowrap">
+                            {formatRelative(t.timestamp_ts)}
+                          </td>
+                          <td className="py-2 max-w-xs truncate">
+                            {polymarketUrl ? (
+                              <a
+                                href={polymarketUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:text-accent-blue transition-colors inline-flex items-center gap-1"
+                              >
+                                {t.market_title || "—"}
+                                <ExternalLink size={11} className="opacity-60 flex-shrink-0" />
+                              </a>
+                            ) : (
+                              t.market_title || "—"
+                            )}
+                          </td>
+                          <td className="py-2 text-text-secondary text-xs">
+                            {t.category || "—"}
+                          </td>
+                          <td className={`py-2 font-medium ${sideColor(t.outcome)}`}>
+                            {t.side} {t.outcome || "—"}
+                          </td>
+                          <td className="py-2 text-right">{formatUSD(t.size_usd)}</td>
+                          <td className="py-2 text-right">{t.price?.toFixed(2) ?? "—"}</td>
+                          <td className="py-2 text-right">
+                            <StatusBadge status={tradeStatus(t)} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              );
+            })()}
         </GlassCard>
       </div>
     </div>

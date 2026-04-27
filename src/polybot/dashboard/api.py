@@ -112,7 +112,7 @@ def get_alerts(
         "a.alert_id, a.component, a.emitted_at, a.wallet_address, a.condition_id, "
         "a.side, a.size_usd, a.price, a.score, a.alignment_score, "
         "a.shadow_mode, a.features_passed, "
-        "m.title, m.slug, "
+        "m.title, m.slug, m.category, "
         "ao.resolution_outcome, ao.was_direction_correct, ao.shadow_pnl_simulated, "
         "ao.price_at_alert, ao.price_at_resolution, "
         "t.outcome "
@@ -144,12 +144,13 @@ def get_alerts(
             "features_passed": r[11],
             "market_title": r[12],
             "market_slug": r[13],
-            "resolution_outcome": r[14],
-            "was_direction_correct": r[15],
-            "shadow_pnl_simulated": float(r[16]) if r[16] else None,
-            "price_at_alert": float(r[17]) if r[17] else None,
-            "price_at_resolution": float(r[18]) if r[18] else None,
-            "outcome": r[19],
+            "category": r[14],
+            "resolution_outcome": r[15],
+            "was_direction_correct": r[16],
+            "shadow_pnl_simulated": float(r[17]) if r[17] else None,
+            "price_at_alert": float(r[18]) if r[18] else None,
+            "price_at_resolution": float(r[19]) if r[19] else None,
+            "outcome": r[20],
         }
         for r in rows
     ]
@@ -497,7 +498,7 @@ def get_wallet_trades(
 ):
     rows = con.execute(
         "SELECT t.transaction_hash, t.timestamp_ts, t.condition_id, "
-        "       m.title, m.slug, t.side, t.outcome, t.size_usd, t.price, "
+        "       m.title, m.slug, m.category, t.side, t.outcome, t.size_usd, t.price, "
         "       m.resolved, m.active, "
         "       ao.resolution_outcome, ao.was_direction_correct "
         "FROM trades t "
@@ -526,14 +527,15 @@ def get_wallet_trades(
             "condition_id": r[2],
             "market_title": r[3],
             "market_slug": r[4],
-            "side": r[5],
-            "outcome": r[6],
-            "size_usd": float(r[7]) if r[7] is not None else None,
-            "price": float(r[8]) if r[8] is not None else None,
-            "resolved": r[9],
-            "active": r[10],
-            "resolution_outcome": r[11],
-            "was_direction_correct": r[12],
+            "category": r[5],
+            "side": r[6],
+            "outcome": r[7],
+            "size_usd": float(r[8]) if r[8] is not None else None,
+            "price": float(r[9]) if r[9] is not None else None,
+            "resolved": r[10],
+            "active": r[11],
+            "resolution_outcome": r[12],
+            "was_direction_correct": r[13],
         }
         for r in seen.values()
     ]

@@ -38,8 +38,28 @@ export default function AlertCard({ alert }) {
           />
         </div>
       </div>
-      <div className="mt-3 text-base font-semibold text-text-primary">
-        {alert.market_title || "Marché inconnu"}
+      <div className="mt-3 flex items-start justify-between gap-3">
+        {polymarketUrl ? (
+          <a
+            href={polymarketUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-base font-semibold text-text-primary hover:text-accent-blue transition-colors inline-flex items-start gap-1.5"
+          >
+            {alert.market_title || "Marché inconnu"}
+            <ExternalLink size={13} className="mt-1 flex-shrink-0 opacity-60" />
+          </a>
+        ) : (
+          <span className="text-base font-semibold text-text-primary">
+            {alert.market_title || "Marché inconnu"}
+          </span>
+        )}
+        {alert.category && (
+          <span className="px-2 py-0.5 bg-white/[0.05] text-text-secondary rounded text-[10px] uppercase tracking-wider whitespace-nowrap flex-shrink-0">
+            {alert.category}
+          </span>
+        )}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm">
         <span className={`font-semibold ${sideColor(alert.outcome)}`}>

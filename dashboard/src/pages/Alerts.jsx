@@ -36,6 +36,7 @@ export default function Alerts() {
   const component = params.get("component");
   const days = params.get("days") || "7";
   const status = params.get("status");
+  const category = params.get("category");
 
   const { data, error, isLoading, mutate } = useSWR(
     urls.alerts({ days: parseInt(days), component }),
@@ -49,7 +50,18 @@ export default function Alerts() {
     setParams(next);
   }
 
-  const filtered = status ? (data || []).filter((a) => alertStatus(a) === status) : data;
+  const categoryOptions = [
+    { value: null, label: "Toutes" },
+    ...Array.from(new Set((data || []).map((a) => a.category).filter(Boolean)))
+      .sort()
+      .map((c) => ({ value: c, label: c })),
+  ];
+
+  const filtered = (data || []).filter((a) => {
+    if (status && alertStatus(a) !== status) return false;
+    if (category && a.category !== category) return false;
+    return true;
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -68,6 +80,12 @@ export default function Alerts() {
           <div className="text-xs uppercase tracking-wider text-text-secondary mb-1">Status</div>
           <FilterPills options={STATUS_OPTIONS} value={status} onChange={(v) => setParam("status", v)} />
         </div>
+        {categoryOptions.length > 1 && (
+          <div>
+            <div className="text-xs uppercase tracking-wider text-text-secondary mb-1">Catégorie</div>
+            <FilterPills options={categoryOptions} value={category} onChange={(v) => setParam("category", v)} />
+          </div>
+        )}
       </div>
 
       {error ? (
