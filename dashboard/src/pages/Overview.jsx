@@ -10,6 +10,7 @@ import SkeletonList from "../components/primitives/SkeletonList";
 import ChartArea from "../components/charts/ChartArea";
 import Sparkline from "../components/charts/Sparkline";
 import AlertCard from "../components/domain/AlertCard";
+import ExitCard from "../components/domain/ExitCard";
 import IndexerRow from "../components/domain/IndexerRow";
 import HotMarketRow from "../components/domain/HotMarketRow";
 import { formatUSD, formatPct } from "../lib/format";
@@ -17,11 +18,10 @@ import { pnlColor } from "../lib/colors";
 
 export default function Overview() {
   const { data: perf, error: perfError } = useSWR(urls.performance(30), { refreshInterval: 60_000 });
-  const { data: alerts, error: alertsError } = useSWR(urls.alerts({ days: 7 }), { refreshInterval: 60_000 });
+  const { data: timeline, error: timelineError } = useSWR(urls.timeline({ days: 7 }), { refreshInterval: 60_000 });
   const { data: alerts24 } = useSWR(urls.alerts({ days: 1 }), { refreshInterval: 60_000 });
   const { data: status, error: statusError } = useSWR(urls.status(), { refreshInterval: 30_000 });
   const { data: hotMarkets } = useSWR(urls.hotMarkets(), { refreshInterval: 120_000 });
-  const { data: costs } = useSWR(urls.costs());
   const { data: wallets } = useSWR(urls.wallets());
 
   // Build pnl_series for hero chart from perf.daily
@@ -31,7 +31,6 @@ export default function Overview() {
     else acc.push({ day: d.day, cum_pnl: d.pnl || 0 });
     return acc;
   }, []);
-  // Cumulate
   let runningPnl = 0;
   const pnlChart = pnlSeries.map((p) => {
     runningPnl += p.cum_pnl;
@@ -46,8 +45,9 @@ export default function Overview() {
   const winRate = totalResolved > 0 ? totalCorrect / totalResolved : null;
   const activeWallets = wallets?.filter((w) => w.active).length ?? 0;
   const totalWallets = wallets?.length ?? 0;
+  const exits7d = (timeline || []).filter((r) => r.type === "exit").length;
 
-  const recentAlerts = (alerts || []).slice(0, 5);
+  const recent = (timeline || []).slice(0, 5);
 
   return (
     <div className="flex flex-col gap-6">
@@ -90,11 +90,7 @@ export default function Overview() {
           label="Wallets actifs"
           value={`${activeWallets}/${totalWallets}`}
         />
-        <KpiCard
-          label="Coûts mois"
-          value={formatUSD((costs?.llm_cost_estimate || 0) + (costs?.vps_monthly || 0))}
-          subtitle={`LLM ${formatUSD(costs?.llm_cost_estimate)} + VPS ${formatUSD(costs?.vps_monthly)}`}
-        />
+        <KpiCard label="Exits 7j" value={exits7d} />
       </div>
 
       {/* Bottom: Alerts (left) + Indexers (right) */}
@@ -106,14 +102,20 @@ export default function Overview() {
               Voir tout <ArrowRight size={14} />
             </Link>
           </div>
-          {alertsError ? (
-            <ErrorState error={alertsError} />
-          ) : !alerts ? (
+          {timelineError ? (
+            <ErrorState error={timelineError} />
+          ) : !timeline ? (
             <SkeletonList count={5} height={140} />
-          ) : recentAlerts.length === 0 ? (
+          ) : recent.length === 0 ? (
             <EmptyState icon={Inbox} message="Aucune alerte récente" />
           ) : (
-            recentAlerts.map((a) => <AlertCard key={a.alert_id} alert={a} />)
+            recent.map((r) =>
+              r.type === "buy" ? (
+                <AlertCard key={r.id} alert={{ ...r, alert_id: r.id, emitted_at: r.created_at }} />
+              ) : (
+                <ExitCard key={r.id} exit={r} />
+              )
+            )
           )}
         </div>
 
