@@ -464,3 +464,57 @@ class TestNextExitId:
         con.close()
 
         assert result == f"EXIT_{today}_0001"
+
+
+# --- Format Exit Message ---
+
+
+class TestFormatExitMessage:
+    def _kwargs(self, **overrides):
+        defaults = {
+            "exit_id": "EXIT_20260427_0001",
+            "wallet_name": "sbimbg",
+            "tier_label": "A1",
+            "market_title": "Fed rate decision by April 2026?",
+            "outcome": "Yes",
+            "entry_price": 0.65,
+            "exit_price": 0.72,
+            "exit_size_usd": 3200.0,
+            "pnl_pct": 10.77,
+            "time_held": "3j",
+        }
+        defaults.update(overrides)
+        return defaults
+
+    def test_contains_required_fields(self):
+        from polybot.components.c1_sharp_money import _format_exit_message
+        msg = _format_exit_message(**self._kwargs())
+        assert "Position Exit" in msg
+        assert "EXIT_20260427_0001" in msg
+        assert "sbimbg" in msg
+        assert "A1" in msg
+        assert "Fed rate decision" in msg
+        assert "BUY Yes @" in msg
+        assert "0.65" in msg
+        assert "SELL @" in msg
+        assert "0.72" in msg
+        assert "3j" in msg  # time held
+        assert "$3,200" in msg  # size with thousands separator
+
+    def test_positive_pnl_has_plus_sign(self):
+        from polybot.components.c1_sharp_money import _format_exit_message
+        msg = _format_exit_message(**self._kwargs(pnl_pct=10.77))
+        assert "+10.8%" in msg  # rounded to 1 decimal, plus sign
+
+    def test_negative_pnl_has_minus_sign(self):
+        from polybot.components.c1_sharp_money import _format_exit_message
+        msg = _format_exit_message(
+            **self._kwargs(entry_price=0.70, exit_price=0.55, pnl_pct=-21.43)
+        )
+        assert "-21.4%" in msg
+        assert "+" not in msg.split("\n")[5]  # no plus sign on the SELL line
+
+    def test_no_outcome_is_yes_by_default(self):
+        from polybot.components.c1_sharp_money import _format_exit_message
+        msg = _format_exit_message(**self._kwargs(outcome="No"))
+        assert "BUY No @" in msg

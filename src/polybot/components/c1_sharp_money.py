@@ -152,6 +152,35 @@ def _humanize_time_held(delta: timedelta) -> str:
     return f"{hours // 24}j"
 
 
+def _format_exit_message(
+    exit_id: str,
+    wallet_name: str,
+    tier_label: str,
+    market_title: str,
+    outcome: str,
+    entry_price: float,
+    exit_price: float,
+    exit_size_usd: float,
+    pnl_pct: float,
+    time_held: str,
+) -> str:
+    """Format an EXIT notification message for Telegram (HTML)."""
+    pnl_sign = "+" if pnl_pct >= 0 else ""
+    parts = [
+        f"⚠️ <b>Position Exit</b>  ·  <code>{exit_id}</code>",
+        "",
+        f"<b>{market_title}</b>",
+        f"👤 {wallet_name}  ·  Tier {tier_label}",
+        "",
+        f"💰 Entrée : BUY {outcome} @ <b>{entry_price:.2f}</b>  (il y a {time_held})",
+        f"📤 Sortie : SELL @ <b>{exit_price:.2f}</b>  ({pnl_sign}{pnl_pct:.1f}%)",
+        f"💵 Size exit : ${exit_size_usd:,.0f}",
+        "",
+        "💡 Si vous avez copié, envisagez de sortir aussi.",
+    ]
+    return "\n".join(parts)
+
+
 def _build_inline_keyboard(
     event_slug: str | None,
     wallet: str,
