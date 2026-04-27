@@ -2,7 +2,7 @@
 
 import asyncio
 import hashlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import duckdb
 import structlog
@@ -124,6 +124,15 @@ def _format_alert(
         parts.append("\n".join(tags))
 
     return "\n".join(parts)
+
+
+def _humanize_time_held(delta: timedelta) -> str:
+    """Format a timedelta as 'Xh' (< 24h) or 'Xj' (>= 24h). Negative → '0h'."""
+    total_seconds = max(0.0, delta.total_seconds())
+    hours = int(total_seconds // 3600)
+    if hours < 24:
+        return f"{hours}h"
+    return f"{hours // 24}j"
 
 
 def _build_inline_keyboard(

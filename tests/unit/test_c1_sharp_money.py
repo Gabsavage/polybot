@@ -376,3 +376,29 @@ class TestCursorPersistence:
         loaded = _load_cursor(db_path)
         assert loaded is not None
         assert loaded == c1.last_check_ts
+
+
+# --- Time humanization ---
+
+
+class TestHumanizeTimeHeld:
+    def test_under_one_hour_rounds_to_hours(self):
+        from polybot.components.c1_sharp_money import _humanize_time_held
+        assert _humanize_time_held(timedelta(minutes=45)) == "0h"
+
+    def test_hours_under_24(self):
+        from polybot.components.c1_sharp_money import _humanize_time_held
+        assert _humanize_time_held(timedelta(hours=3, minutes=30)) == "3h"
+        assert _humanize_time_held(timedelta(hours=23, minutes=59)) == "23h"
+
+    def test_24h_becomes_one_day(self):
+        from polybot.components.c1_sharp_money import _humanize_time_held
+        assert _humanize_time_held(timedelta(hours=24)) == "1j"
+
+    def test_multi_day(self):
+        from polybot.components.c1_sharp_money import _humanize_time_held
+        assert _humanize_time_held(timedelta(days=3, hours=5)) == "3j"
+
+    def test_negative_clamps_to_zero(self):
+        from polybot.components.c1_sharp_money import _humanize_time_held
+        assert _humanize_time_held(timedelta(seconds=-30)) == "0h"
