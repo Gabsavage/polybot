@@ -47,6 +47,7 @@ class Settings(BaseSettings):
 
     # C1 Sharp Money
     C1_SIZE_MIN_USD: float = 1000.0
+    C1_EXIT_SIZE_MIN_USD: float = 500.0
     C1_RATE_LIMIT_HOURS: int = 3
     C1_DEDUP_BUCKET_SECONDS: int = 300
     C1_LIQUIDITY_MIN_DEPTH: float = 500.0
