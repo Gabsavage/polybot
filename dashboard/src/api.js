@@ -23,4 +23,9 @@ export const urls = {
   audit: (limit = 50) => `/audit?limit=${limit}`,
   costs: () => "/costs",
   clusters: () => "/clusters",
+  timeline: ({ days = 7, wallet } = {}) => {
+    const qs = new URLSearchParams({ days });
+    if (wallet) qs.set("wallet", wallet);
+    return `/timeline?${qs}`;
+  },
 };
