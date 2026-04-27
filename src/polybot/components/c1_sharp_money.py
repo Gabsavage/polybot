@@ -227,6 +227,7 @@ class SharpMoneyDetector:
                 db_path=self.db_path,
                 anthropic_api_key=settings.ANTHROPIC_API_KEY,
             )
+        self._exit_notified: set[tuple[str, str, str]] = set()
 
     def _fetch_new_trades(self) -> list[dict]:
         """Query trades since last check, joined with tracked_wallets."""
@@ -460,6 +461,73 @@ class SharpMoneyDetector:
             size_suggested=size_suggested,
         )
         return True
+
+    async def _process_exit(self, trade: dict) -> bool:
+        """Emit an EXIT notification if SELL closes a pending C1 position.
+
+        Returns True if a notification was emitted.
+        """
+        # Filter: SELL only (defensive — caller already routes by side).
+        if trade["side"] != "SELL":
+            return False
+
+        # Filter: minimum size for EXIT.
+        size_usd = float(trade["size_usd"])
+        if size_usd < self.settings.C1_EXIT_SIZE_MIN_USD:
+            return False
+
+        wallet = trade["proxy_wallet"]
+        condition_id = trade["condition_id"]
+        sell_outcome = trade["outcome"]
+
+        # In-memory dedup: one notification per (wallet, market, outcome).
+        key = (wallet, condition_id, sell_outcome)
+        if key in self._exit_notified:
+            return False
+
+        # Look up a pending C1 alert that matches outcome.
+        pending = self._find_pending_buy_alert(wallet, condition_id, sell_outcome)
+        if pending is None:
+            return False
+
+        # Happy path lands in Task 6.
+        return False
+
+    def _find_pending_buy_alert(
+        self, wallet: str, condition_id: str, outcome: str
+    ) -> dict | None:
+        """Return the most recent unresolved C1 BUY alert on (wallet, market, outcome)."""
+        con = db_connect(self.db_path, read_only=True)
+        try:
+            row = con.execute(
+                """
+                SELECT a.alert_id, t_buy.outcome, a.price AS entry_price,
+                       a.size_suggested_usd, a.emitted_at
+                FROM alerts a
+                JOIN trades t_buy ON a.trade_hash = t_buy.transaction_hash
+                LEFT JOIN alert_outcomes ao ON a.alert_id = ao.alert_id
+                WHERE a.component = 'C1'
+                  AND a.wallet_address = ?
+                  AND a.condition_id = ?
+                  AND t_buy.outcome = ?
+                  AND (ao.resolution_outcome IS NULL
+                       OR ao.resolution_outcome = 'PENDING')
+                ORDER BY a.emitted_at DESC LIMIT 1
+                """,
+                [wallet, condition_id, outcome],
+            ).fetchone()
+        finally:
+            con.close()
+
+        if row is None:
+            return None
+        return {
+            "alert_id": row[0],
+            "outcome": row[1],
+            "entry_price": float(row[2]),
+            "size_suggested_usd": float(row[3]) if row[3] is not None else None,
+            "emitted_at": row[4],
+        }
 
     async def poll_once(self) -> int:
         """One polling cycle. Returns number of alerts emitted."""

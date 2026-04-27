@@ -518,3 +518,130 @@ class TestFormatExitMessage:
         from polybot.components.c1_sharp_money import _format_exit_message
         msg = _format_exit_message(**self._kwargs(outcome="No"))
         assert "BUY No @" in msg
+
+
+def _seed_alert(
+    db_path: str,
+    alert_id: str = "AL_20260427_0001",
+    wallet: str = "0xwallet1",
+    condition_id: str = "cond1",
+    trade_hash: str = "0xtx_buy",
+    price: float = 0.65,
+    emitted_offset_hours: float = 72.0,
+):
+    """Insert a C1 alert row plus the corresponding BUY trade (so JOIN works)."""
+    con = duckdb.connect(db_path)
+    emitted = datetime.now(UTC) - timedelta(hours=emitted_offset_hours)
+    # The BUY trade the alert references.
+    con.execute(
+        """INSERT OR REPLACE INTO trades (
+            transaction_hash, proxy_wallet, condition_id, asset_id,
+            side, size_usd, price, outcome, outcome_index,
+            timestamp_unix, timestamp_ts, market_title, market_slug,
+            event_slug, wallet_name
+        ) VALUES (?, ?, ?, 'token1', 'BUY', 1500.0, ?, 'Yes', 0, ?, ?,
+                  'Test Market', 'test-market', 'test-event', 'SharpTrader')""",
+        [trade_hash, wallet, condition_id, price,
+         int(emitted.timestamp()), emitted],
+    )
+    con.execute(
+        """INSERT INTO alerts (
+            alert_id, component, emitted_at, trade_hash, wallet_address,
+            condition_id, side, size_usd, price, size_suggested_usd,
+            shadow_mode, dedup_hash
+        ) VALUES (?, 'C1', ?, ?, ?, ?, 'BUY', 1500.0, ?, 30.0, TRUE, ?)""",
+        [alert_id, emitted, trade_hash, wallet, condition_id, price,
+         f"dedup_{alert_id}"],
+    )
+    con.close()
+
+
+class TestProcessExit:
+    def _make_detector(self, db_path, settings):
+        bot = MagicMock()
+        bot.send_alert = AsyncMock(return_value=42)
+        det = SharpMoneyDetector(bot=bot, settings=settings)
+        det.db_path = db_path
+        return det, bot
+
+    def _sell_trade(self, **overrides):
+        defaults = {
+            "transaction_hash": "0xtx_sell",
+            "proxy_wallet": "0xwallet1",
+            "condition_id": "cond1",
+            "side": "SELL",
+            "size_usd": 3200.0,
+            "price": 0.72,
+            "outcome": "Yes",
+            "timestamp_ts": datetime.now(UTC),
+            "market_title": "Test Market",
+            "event_slug": "test-event",
+            "tier_a_confidence": 0.95,
+            "wallet_name": "SharpTrader",
+            "liquidity_usd": 5000.0,
+        }
+        defaults.update(overrides)
+        return defaults
+
+    def test_returns_false_when_size_below_floor(self, db_path, settings):
+        _seed_wallet(db_path)
+        _seed_alert(db_path)
+        det, bot = self._make_detector(db_path, settings)
+
+        import asyncio
+        result = asyncio.new_event_loop().run_until_complete(
+            det._process_exit(self._sell_trade(size_usd=100.0))
+        )
+        assert result is False
+        bot.send_alert.assert_not_called()
+        # Dedup must NOT be marked when we early-returned for size.
+        assert ("0xwallet1", "cond1", "Yes") not in det._exit_notified
+
+    def test_returns_false_when_no_pending_alert(self, db_path, settings):
+        _seed_wallet(db_path)
+        # No alert seeded.
+        det, bot = self._make_detector(db_path, settings)
+
+        import asyncio
+        result = asyncio.new_event_loop().run_until_complete(
+            det._process_exit(self._sell_trade())
+        )
+        assert result is False
+        bot.send_alert.assert_not_called()
+
+    def test_returns_false_when_alert_resolved(self, db_path, settings):
+        _seed_wallet(db_path)
+        _seed_alert(db_path, alert_id="AL_20260427_0001")
+        # Mark resolved.
+        con = duckdb.connect(db_path)
+        con.execute(
+            "INSERT INTO alert_outcomes (alert_id, condition_id, resolution_outcome) "
+            "VALUES (?, 'cond1', 'YES')",
+            ["AL_20260427_0001"],
+        )
+        con.close()
+        det, bot = self._make_detector(db_path, settings)
+
+        import asyncio
+        result = asyncio.new_event_loop().run_until_complete(
+            det._process_exit(self._sell_trade())
+        )
+        assert result is False
+        bot.send_alert.assert_not_called()
+
+    def test_returns_false_when_outcome_mismatch(self, db_path, settings):
+        _seed_wallet(db_path)
+        _seed_alert(db_path)  # BUY trade has outcome='Yes'
+        det, bot = self._make_detector(db_path, settings)
+
+        import asyncio
+        result = asyncio.new_event_loop().run_until_complete(
+            det._process_exit(self._sell_trade(outcome="No"))
+        )
+        assert result is False
+        bot.send_alert.assert_not_called()
+
+    def test_init_creates_empty_exit_notified_set(self, settings):
+        bot = MagicMock()
+        det = SharpMoneyDetector(bot=bot, settings=settings)
+        assert det._exit_notified == set()
