@@ -512,7 +512,7 @@ class TestFormatExitMessage:
             **self._kwargs(entry_price=0.70, exit_price=0.55, pnl_pct=-21.43)
         )
         assert "-21.4%" in msg
-        assert "+" not in msg.split("\n")[5]  # no plus sign on the SELL line
+        assert "+" not in msg.split("\n")[6]  # no plus sign on the SELL line
 
     def test_no_outcome_is_yes_by_default(self):
         from polybot.components.c1_sharp_money import _format_exit_message
