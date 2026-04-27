@@ -114,10 +114,12 @@ def get_alerts(
         "a.shadow_mode, a.features_passed, "
         "m.title, m.slug, "
         "ao.resolution_outcome, ao.was_direction_correct, ao.shadow_pnl_simulated, "
-        "ao.price_at_alert, ao.price_at_resolution "
+        "ao.price_at_alert, ao.price_at_resolution, "
+        "t.outcome "
         "FROM alerts a "
         "LEFT JOIN markets m ON a.condition_id = m.condition_id "
         "LEFT JOIN alert_outcomes ao ON a.alert_id = ao.alert_id "
+        "LEFT JOIN trades t ON a.trade_hash = t.transaction_hash "
         f"WHERE a.emitted_at >= CURRENT_DATE - INTERVAL '{interval}'"
     )
     params: list = []
@@ -147,6 +149,7 @@ def get_alerts(
             "shadow_pnl_simulated": float(r[16]) if r[16] else None,
             "price_at_alert": float(r[17]) if r[17] else None,
             "price_at_resolution": float(r[18]) if r[18] else None,
+            "outcome": r[19],
         }
         for r in rows
     ]

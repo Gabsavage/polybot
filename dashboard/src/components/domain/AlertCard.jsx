@@ -42,8 +42,8 @@ export default function AlertCard({ alert }) {
         {alert.market_title || "Marché inconnu"}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-        <span className={`font-semibold ${sideColor(alert.side)}`}>
-          BUY {alert.side} @ {alert.price?.toFixed(2)}
+        <span className={`font-semibold ${sideColor(alert.outcome)}`}>
+          {alert.side || "BUY"} {alert.outcome || "—"} @ {alert.price?.toFixed(2)}
         </span>
         <span className="text-text-secondary">
           ${formatUSD(alert.size_usd)} <span className="text-text-tertiary">(wallet)</span>
