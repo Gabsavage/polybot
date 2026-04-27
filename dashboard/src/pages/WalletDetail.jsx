@@ -12,6 +12,9 @@ import SkeletonList from "../components/primitives/SkeletonList";
 import StatusBadge from "../components/primitives/StatusBadge";
 import FilterPills from "../components/primitives/FilterPills";
 import ChartArea from "../components/charts/ChartArea";
+import AlertCard from "../components/domain/AlertCard";
+import ExitCard from "../components/domain/ExitCard";
+import BuyExitPair from "../components/domain/BuyExitPair";
 import { formatUSD, formatPct, formatRelative } from "../lib/format";
 import { pnlColor, sideColor } from "../lib/colors";
 
@@ -24,8 +27,37 @@ export default function WalletDetail() {
   const { address } = useParams();
   const { data, error, isLoading, mutate } = useSWR(urls.walletDetail(address));
   const { data: trades } = useSWR(urls.walletTrades(address, 100));
+  const { data: timeline } = useSWR(urls.timeline({ wallet: address, days: 365 }));
   const [categoryFilter, setCategoryFilter] = useState(null);
   const [sideFilter, setSideFilter] = useState(null);
+
+  // Group BUY+EXIT into lifecycle pairs for the Timeline section.
+  const timelineGroups = (() => {
+    if (!timeline) return null;
+    const buyToExit = {};
+    for (const r of timeline) {
+      if (r.type === "exit" && r.original_alert_id) {
+        buyToExit[r.original_alert_id] = r;
+      }
+    }
+    const groups = [];
+    const pairedExitIds = new Set();
+    for (const r of timeline) {
+      if (r.type === "buy") {
+        const exit = buyToExit[r.id];
+        if (exit) {
+          groups.push({ kind: "pair", buy: r, exit, sortKey: exit.created_at });
+          pairedExitIds.add(exit.id);
+        } else {
+          groups.push({ kind: "buy_only", buy: r, sortKey: r.created_at });
+        }
+      } else if (!pairedExitIds.has(r.id)) {
+        groups.push({ kind: "exit_orphan", exit: r, sortKey: r.created_at });
+      }
+    }
+    groups.sort((a, b) => (a.sortKey < b.sortKey ? 1 : -1));
+    return groups;
+  })();
 
   if (error) {
     if (error.status === 404) {
@@ -155,6 +187,38 @@ export default function WalletDetail() {
           </GlassCard>
         </div>
       )}
+
+      <div className="flex flex-col gap-3">
+        <h2 className="text-xl font-semibold">Timeline (BUY → EXIT)</h2>
+        {!timeline ? (
+          <SkeletonList count={3} height={140} />
+        ) : timelineGroups.length === 0 ? (
+          <EmptyState icon={Inbox} message="Aucune alerte ni exit pour ce wallet" />
+        ) : (
+          <div className="flex flex-col gap-3">
+            {timelineGroups.map((g) => {
+              if (g.kind === "pair") {
+                return (
+                  <BuyExitPair
+                    key={`pair_${g.buy.id}`}
+                    buy={{ ...g.buy, alert_id: g.buy.id, emitted_at: g.buy.created_at }}
+                    exit={g.exit}
+                  />
+                );
+              }
+              if (g.kind === "buy_only") {
+                return (
+                  <AlertCard
+                    key={`buy_${g.buy.id}`}
+                    alert={{ ...g.buy, alert_id: g.buy.id, emitted_at: g.buy.created_at }}
+                  />
+                );
+              }
+              return <ExitCard key={`exit_${g.exit.id}`} exit={g.exit} />;
+            })}
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col gap-3">
         <h2 className="text-xl font-semibold">Trades récents</h2>
