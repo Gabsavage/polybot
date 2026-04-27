@@ -165,7 +165,7 @@ export default function WalletDetail() {
                 <tr className="text-left text-xs uppercase tracking-wider text-text-secondary">
                   <th className="pb-2">Date</th>
                   <th className="pb-2">Marché</th>
-                  <th className="pb-2">Side</th>
+                  <th className="pb-2">Direction</th>
                   <th className="pb-2 text-right">Size</th>
                   <th className="pb-2 text-right">Prix</th>
                   <th className="pb-2 text-right">Status</th>
@@ -178,7 +178,9 @@ export default function WalletDetail() {
                       {formatRelative(t.timestamp_ts)}
                     </td>
                     <td className="py-2 max-w-xs truncate">{t.market_title || "—"}</td>
-                    <td className={`py-2 font-medium ${sideColor(t.side)}`}>{t.side}</td>
+                    <td className={`py-2 font-medium ${sideColor(t.outcome)}`}>
+                      {t.side} {t.outcome || "—"}
+                    </td>
                     <td className="py-2 text-right">{formatUSD(t.size_usd)}</td>
                     <td className="py-2 text-right">{t.price?.toFixed(2) ?? "—"}</td>
                     <td className="py-2 text-right">
