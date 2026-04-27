@@ -402,3 +402,65 @@ class TestHumanizeTimeHeld:
     def test_negative_clamps_to_zero(self):
         from polybot.components.c1_sharp_money import _humanize_time_held
         assert _humanize_time_held(timedelta(seconds=-30)) == "0h"
+
+
+# --- Next Exit ID ---
+
+
+class TestNextExitId:
+    def test_empty_audit_log_returns_0001(self, db_path):
+        from polybot.components.c1_sharp_money import _next_exit_id
+        from datetime import datetime, UTC
+
+        con = duckdb.connect(db_path)
+        today = datetime.now(UTC).strftime("%Y%m%d")
+        result = _next_exit_id(con)
+        con.close()
+
+        assert result == f"EXIT_{today}_0001"
+
+    def test_increments_when_today_row_exists(self, db_path):
+        from polybot.components.c1_sharp_money import _next_exit_id
+        from datetime import datetime, UTC
+
+        today = datetime.now(UTC).strftime("%Y%m%d")
+        con = duckdb.connect(db_path)
+        con.execute(
+            "INSERT INTO audit_log (event_type, target, action) VALUES (?, ?, ?)",
+            ["position_exit", f"EXIT_{today}_0001", "0xwallet1"],
+        )
+        result = _next_exit_id(con)
+        con.close()
+
+        assert result == f"EXIT_{today}_0002"
+
+    def test_ignores_other_days(self, db_path):
+        from polybot.components.c1_sharp_money import _next_exit_id
+        from datetime import datetime, UTC
+
+        today = datetime.now(UTC).strftime("%Y%m%d")
+        con = duckdb.connect(db_path)
+        # A row from a different day must not influence today's counter.
+        con.execute(
+            "INSERT INTO audit_log (event_type, target, action) VALUES (?, ?, ?)",
+            ["position_exit", "EXIT_19990101_0042", "0xwallet1"],
+        )
+        result = _next_exit_id(con)
+        con.close()
+
+        assert result == f"EXIT_{today}_0001"
+
+    def test_ignores_other_event_types(self, db_path):
+        from polybot.components.c1_sharp_money import _next_exit_id
+        from datetime import datetime, UTC
+
+        today = datetime.now(UTC).strftime("%Y%m%d")
+        con = duckdb.connect(db_path)
+        con.execute(
+            "INSERT INTO audit_log (event_type, target, action) VALUES (?, ?, ?)",
+            ["kill_switch_toggled", f"EXIT_{today}_0007", "manual"],
+        )
+        result = _next_exit_id(con)
+        con.close()
+
+        assert result == f"EXIT_{today}_0001"

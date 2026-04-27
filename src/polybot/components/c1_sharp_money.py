@@ -29,6 +29,23 @@ def _next_alert_id(con: duckdb.DuckDBPyConnection) -> str:
     return f"{prefix}{seq:04d}"
 
 
+def _next_exit_id(con: duckdb.DuckDBPyConnection) -> str:
+    """Generate next EXIT id: EXIT_YYYYMMDD_NNNN scanning audit_log.target."""
+    today = datetime.now(UTC).strftime("%Y%m%d")
+    prefix = f"EXIT_{today}_"
+    row = con.execute(
+        "SELECT target FROM audit_log "
+        "WHERE event_type = 'position_exit' AND target LIKE ? "
+        "ORDER BY target DESC LIMIT 1",
+        [f"{prefix}%"],
+    ).fetchone()
+    if row is None:
+        return f"{prefix}0001"
+    last = row[0]
+    n = int(last.rsplit("_", 1)[1]) + 1
+    return f"{prefix}{n:04d}"
+
+
 def _dedup_hash(
     wallet: str, condition_id: str, side: str, ts_unix: int, bucket_s: int
 ) -> str:
