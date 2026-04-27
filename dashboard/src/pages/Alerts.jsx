@@ -7,6 +7,7 @@ import EmptyState from "../components/primitives/EmptyState";
 import ErrorState from "../components/primitives/ErrorState";
 import SkeletonList from "../components/primitives/SkeletonList";
 import AlertCard from "../components/domain/AlertCard";
+import ExitCard from "../components/domain/ExitCard";
 
 const COMPONENT_OPTIONS = [
   { value: null, label: "Tous" },
@@ -25,10 +26,15 @@ const STATUS_OPTIONS = [
   { value: "correct", label: "Correct" },
   { value: "incorrect", label: "Incorrect" },
 ];
+const TYPE_OPTIONS = [
+  { value: null, label: "Tous" },
+  { value: "buy", label: "BUY" },
+  { value: "exit", label: "EXIT" },
+];
 
-function alertStatus(alert) {
-  if (!alert.resolution_outcome || alert.resolution_outcome === "PENDING") return "pending";
-  return alert.was_direction_correct ? "correct" : "incorrect";
+function buyStatus(buy) {
+  if (!buy.resolution_outcome || buy.resolution_outcome === "PENDING") return "pending";
+  return buy.was_direction_correct ? "correct" : "incorrect";
 }
 
 export default function Alerts() {
@@ -37,9 +43,10 @@ export default function Alerts() {
   const days = params.get("days") || "7";
   const status = params.get("status");
   const category = params.get("category");
+  const type = params.get("type");
 
   const { data, error, isLoading, mutate } = useSWR(
-    urls.alerts({ days: parseInt(days), component }),
+    urls.timeline({ days: parseInt(days) }),
     { refreshInterval: 60_000 }
   );
 
@@ -52,14 +59,20 @@ export default function Alerts() {
 
   const categoryOptions = [
     { value: null, label: "Toutes" },
-    ...Array.from(new Set((data || []).map((a) => a.category).filter(Boolean)))
+    ...Array.from(new Set((data || []).map((r) => r.category).filter(Boolean)))
       .sort()
       .map((c) => ({ value: c, label: c })),
   ];
 
-  const filtered = (data || []).filter((a) => {
-    if (status && alertStatus(a) !== status) return false;
-    if (category && a.category !== category) return false;
+  const filtered = (data || []).filter((r) => {
+    if (type && r.type !== type) return false;
+    if (component && r.type === "buy" && r.component !== component) return false;
+    if (component && r.type === "exit") return false; // component filter excludes EXITs
+    if (status) {
+      if (r.type !== "buy") return false;
+      if (buyStatus(r) !== status) return false;
+    }
+    if (category && r.category !== category) return false;
     return true;
   });
 
@@ -68,6 +81,10 @@ export default function Alerts() {
       <h1 className="text-3xl md:text-4xl font-light tracking-tight">Alertes</h1>
 
       <div className="flex flex-col md:flex-row md:items-center gap-4 flex-wrap">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-text-secondary mb-1">Type</div>
+          <FilterPills options={TYPE_OPTIONS} value={type} onChange={(v) => setParam("type", v)} />
+        </div>
         <div>
           <div className="text-xs uppercase tracking-wider text-text-secondary mb-1">Composant</div>
           <FilterPills options={COMPONENT_OPTIONS} value={component} onChange={(v) => setParam("component", v)} />
@@ -96,9 +113,13 @@ export default function Alerts() {
         <EmptyState icon={Inbox} message="Aucune alerte sur ces critères" />
       ) : (
         <div className="flex flex-col gap-3">
-          {filtered.map((a) => (
-            <AlertCard key={a.alert_id} alert={a} />
-          ))}
+          {filtered.map((r) =>
+            r.type === "buy" ? (
+              <AlertCard key={r.id} alert={{ ...r, alert_id: r.id, emitted_at: r.created_at }} />
+            ) : (
+              <ExitCard key={r.id} exit={r} />
+            )
+          )}
         </div>
       )}
     </div>
