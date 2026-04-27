@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import json
 from datetime import UTC, datetime, timedelta
 
 import duckdb
@@ -521,8 +522,6 @@ class SharpMoneyDetector:
         time_held = _humanize_time_held(time_delta)
 
         # Allocate EXIT id and persist to audit_log (JSON in `reason`).
-        import json
-
         payload = {
             "alert_id": pending["alert_id"],
             "condition_id": condition_id,

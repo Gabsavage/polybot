@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import duckdb
 import pytest
@@ -738,3 +738,32 @@ class TestProcessExit:
 
         topic = bot.send_alert.call_args.args[0]
         assert topic == "alerts"
+
+    def test_audit_failure_still_sends_notification(self, db_path, settings):
+        _seed_wallet(db_path)
+        _seed_alert(db_path)
+        det, bot = self._make_detector(db_path, settings)
+
+        import asyncio
+        with patch(
+            "polybot.components.c1_sharp_money.db_write_with_retry",
+            side_effect=RuntimeError("audit down"),
+        ):
+            result = asyncio.new_event_loop().run_until_complete(
+                det._process_exit(self._sell_trade())
+            )
+
+        assert result is True
+        bot.send_alert.assert_called_once()
+        message = bot.send_alert.call_args.args[1]
+        assert "EXIT_" in message
+        assert "_xxxx" in message  # synthetic fallback id
+        assert ("0xwallet1", "cond1", "Yes") in det._exit_notified
+
+        # No audit_log row should have been persisted (write retried then raised).
+        con = duckdb.connect(db_path)
+        cnt = con.execute(
+            "SELECT COUNT(*) FROM audit_log WHERE event_type = 'position_exit'"
+        ).fetchone()[0]
+        con.close()
+        assert cnt == 0
