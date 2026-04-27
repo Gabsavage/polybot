@@ -53,3 +53,10 @@ export function parseFeaturesSafe(jsonOrStr) {
   if (Array.isArray(jsonOrStr)) return jsonOrStr;
   return [];
 }
+
+export function formatHeld(hours) {
+  if (hours == null || isNaN(hours)) return "—";
+  if (hours < 1) return "<1h";
+  if (hours < 24) return `${Math.floor(hours)}h`;
+  return `${Math.floor(hours / 24)}j`;
+}
