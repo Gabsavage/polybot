@@ -10,7 +10,7 @@ import structlog
 from polybot.components.sizing import compute_size
 from polybot.config import Settings
 from polybot.db.connection import connect as db_connect
-from polybot.db.connection import db_write_with_retry
+from polybot.db.connection import db_read_with_retry, db_write_with_retry
 from polybot.telegram.bot import PolyBot
 
 logger = structlog.get_logger()
@@ -497,9 +497,8 @@ class SharpMoneyDetector:
         self, wallet: str, condition_id: str, outcome: str
     ) -> dict | None:
         """Return the most recent unresolved C1 BUY alert on (wallet, market, outcome)."""
-        con = db_connect(self.db_path, read_only=True)
-        try:
-            row = con.execute(
+        def _do(con):
+            return con.execute(
                 """
                 SELECT a.alert_id, t_buy.outcome, a.price AS entry_price,
                        a.size_suggested_usd, a.emitted_at
@@ -516,9 +515,8 @@ class SharpMoneyDetector:
                 """,
                 [wallet, condition_id, outcome],
             ).fetchone()
-        finally:
-            con.close()
 
+        row = db_read_with_retry(self.db_path, _do)
         if row is None:
             return None
         return {
