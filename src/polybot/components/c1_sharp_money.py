@@ -208,6 +208,25 @@ def _build_inline_keyboard(
     ])
 
 
+def _build_exit_keyboard(event_slug: str | None, wallet: str):
+    """Inline keyboard for an EXIT notification: market + wallet URL buttons only."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    market_url = (
+        f"https://polymarket.com/event/{event_slug}"
+        if event_slug
+        else "https://polymarket.com"
+    )
+    wallet_url = f"https://polymarket.com/portfolio/{wallet}"
+
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📊 Marché", url=market_url),
+            InlineKeyboardButton("👤 Wallet", url=wallet_url),
+        ],
+    ])
+
+
 class SharpMoneyDetector:
     """Polls trades table and emits C1 alerts for Tier A wallets."""
 
@@ -490,8 +509,77 @@ class SharpMoneyDetector:
         if pending is None:
             return False
 
-        # Happy path lands in Task 6.
-        return False
+        # Compute pnl + time held.
+        entry_price = pending["entry_price"]
+        exit_price = float(trade["price"])
+        pnl_pct = (exit_price - entry_price) / entry_price * 100 if entry_price else 0.0
+
+        emitted_at = pending["emitted_at"]
+        if emitted_at.tzinfo is None:
+            emitted_at = emitted_at.replace(tzinfo=UTC)
+        time_delta = datetime.now(UTC) - emitted_at
+        time_held = _humanize_time_held(time_delta)
+
+        # Allocate EXIT id and persist to audit_log (JSON in `reason`).
+        import json
+
+        payload = {
+            "alert_id": pending["alert_id"],
+            "condition_id": condition_id,
+            "outcome": sell_outcome,
+            "entry_price": round(entry_price, 4),
+            "exit_price": round(exit_price, 4),
+            "exit_size_usd": round(size_usd, 2),
+            "pnl_pct": round(pnl_pct, 2),
+            "time_held_h": round(time_delta.total_seconds() / 3600.0, 2),
+        }
+
+        def _insert_audit(con):
+            exit_id_local = _next_exit_id(con)
+            con.execute(
+                "INSERT INTO audit_log (event_type, target, action, reason) "
+                "VALUES ('position_exit', ?, ?, ?)",
+                [exit_id_local, wallet, json.dumps(payload)],
+            )
+            return exit_id_local
+
+        try:
+            exit_id = db_write_with_retry(self.db_path, _insert_audit)
+        except Exception:
+            logger.exception("c1_exit_audit_failed", wallet=wallet[:12])
+            # Fall back to a synthetic id so the user-facing notification still goes out.
+            exit_id = f"EXIT_{datetime.now(UTC).strftime('%Y%m%d')}_xxxx"
+
+        # Build the message + keyboard.
+        tier_label = "A1" if float(trade.get("tier_a_confidence") or 0.5) >= 0.90 else "A2"
+        message = _format_exit_message(
+            exit_id=exit_id,
+            wallet_name=trade.get("wallet_name") or wallet[:12],
+            tier_label=tier_label,
+            market_title=trade.get("market_title") or condition_id[:20],
+            outcome=sell_outcome,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            exit_size_usd=size_usd,
+            pnl_pct=pnl_pct,
+            time_held=time_held,
+        )
+        keyboard = _build_exit_keyboard(
+            event_slug=trade.get("event_slug"),
+            wallet=wallet,
+        )
+
+        # Send Telegram first; mark dedup ONLY on success.
+        topic = "ops" if self.settings.SHADOW_MODE else "alerts"
+        await self.bot.send_alert(topic, message, reply_markup=keyboard)
+        self._exit_notified.add(key)
+        logger.info(
+            "c1_exit_notified",
+            exit_id=exit_id,
+            wallet=wallet[:12],
+            pnl_pct=round(pnl_pct, 2),
+        )
+        return True
 
     def _find_pending_buy_alert(
         self, wallet: str, condition_id: str, outcome: str

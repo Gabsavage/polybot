@@ -645,3 +645,96 @@ class TestProcessExit:
         bot = MagicMock()
         det = SharpMoneyDetector(bot=bot, settings=settings)
         assert det._exit_notified == set()
+
+    def test_emits_notification_on_match(self, db_path, settings):
+        _seed_wallet(db_path)
+        _seed_alert(db_path, price=0.65, emitted_offset_hours=72.0)
+        det, bot = self._make_detector(db_path, settings)
+
+        import asyncio
+        result = asyncio.new_event_loop().run_until_complete(
+            det._process_exit(self._sell_trade(price=0.72, size_usd=3200.0))
+        )
+
+        assert result is True
+        bot.send_alert.assert_called_once()
+        # Topic routing: SHADOW_MODE default is True, so topic == "ops".
+        topic, message = bot.send_alert.call_args.args[:2]
+        assert topic == "ops"
+        assert "EXIT_" in message
+        assert "+10.8%" in message  # (0.72 - 0.65) / 0.65 ≈ 10.77 → "+10.8%"
+        # Dedup is now marked.
+        assert ("0xwallet1", "cond1", "Yes") in det._exit_notified
+
+    def test_audit_log_row_persisted(self, db_path, settings):
+        import json
+
+        _seed_wallet(db_path)
+        _seed_alert(db_path)
+        det, bot = self._make_detector(db_path, settings)
+
+        import asyncio
+        asyncio.new_event_loop().run_until_complete(
+            det._process_exit(self._sell_trade())
+        )
+
+        con = duckdb.connect(db_path)
+        row = con.execute(
+            "SELECT event_type, target, action, reason FROM audit_log "
+            "WHERE event_type = 'position_exit'"
+        ).fetchone()
+        con.close()
+
+        assert row is not None
+        assert row[0] == "position_exit"
+        assert row[1].startswith("EXIT_")
+        assert row[2] == "0xwallet1"
+        payload = json.loads(row[3])
+        assert payload["alert_id"] == "AL_20260427_0001"
+        assert payload["outcome"] == "Yes"
+        assert payload["entry_price"] == 0.65
+        assert payload["exit_price"] == 0.72
+        assert payload["exit_size_usd"] == 3200.0
+        assert abs(payload["pnl_pct"] - 10.77) < 0.05
+
+    def test_dedup_blocks_second_sell(self, db_path, settings):
+        _seed_wallet(db_path)
+        _seed_alert(db_path)
+        det, bot = self._make_detector(db_path, settings)
+
+        import asyncio
+        loop = asyncio.new_event_loop()
+        first = loop.run_until_complete(det._process_exit(self._sell_trade()))
+        second = loop.run_until_complete(
+            det._process_exit(self._sell_trade(transaction_hash="0xtx_sell2"))
+        )
+        assert first is True
+        assert second is False
+        assert bot.send_alert.call_count == 1
+
+    def test_telegram_failure_does_not_mark_dedup(self, db_path, settings):
+        _seed_wallet(db_path)
+        _seed_alert(db_path)
+        det, bot = self._make_detector(db_path, settings)
+        bot.send_alert = AsyncMock(side_effect=RuntimeError("telegram down"))
+
+        import asyncio
+        with pytest.raises(RuntimeError):
+            asyncio.new_event_loop().run_until_complete(
+                det._process_exit(self._sell_trade())
+            )
+        assert ("0xwallet1", "cond1", "Yes") not in det._exit_notified
+
+    def test_alerts_topic_when_not_shadow(self, db_path, settings):
+        settings.SHADOW_MODE = False
+        _seed_wallet(db_path)
+        _seed_alert(db_path)
+        det, bot = self._make_detector(db_path, settings)
+
+        import asyncio
+        asyncio.new_event_loop().run_until_complete(
+            det._process_exit(self._sell_trade())
+        )
+
+        topic = bot.send_alert.call_args.args[0]
+        assert topic == "alerts"
