@@ -43,8 +43,38 @@ INDEXER_KILL_TARGETS = {
 }
 
 
+async def _wait_until(target_dt: datetime, chunk_s: float = 30.0) -> None:
+    """Sleep until target_dt, resilient to event loop starvation.
+
+    Sleeps in chunk_s-second slices and rechecks the wall clock each iteration,
+    so a single drifted asyncio.sleep cannot shift the wakeup by more than
+    ~chunk_s seconds beyond target_dt.
+    """
+    while True:
+        now = datetime.now(target_dt.tzinfo)
+        remaining = (target_dt - now).total_seconds()
+        if remaining <= 0:
+            return
+        await asyncio.sleep(min(remaining, chunk_s))
+
+
+async def _monitor_loop_lag(
+    threshold_s: float = 2.0, interval_s: float = 60.0
+) -> None:
+    """Log a warning when a 1-second sleep returns more than threshold_s late."""
+    loop = asyncio.get_event_loop()
+    while True:
+        t0 = loop.time()
+        await asyncio.sleep(1.0)
+        lag = loop.time() - t0 - 1.0
+        if lag > threshold_s:
+            logger.warning("event_loop_lag", lag_s=round(lag, 2))
+        await asyncio.sleep(max(0.0, interval_s - 1.0))
+
+
 async def schedule_daily_report(bot: PolyBot, db_path: str) -> None:
     """Send daily report at 09:00 CEST every day."""
+    loop = asyncio.get_event_loop()
     while True:
         now = datetime.now(CEST)
         target = datetime.combine(now.date(), time(DAILY_REPORT_HOUR, 0), CEST)
@@ -52,13 +82,15 @@ async def schedule_daily_report(bot: PolyBot, db_path: str) -> None:
             target += timedelta(days=1)
         wait_seconds = (target - now).total_seconds()
         logger.info("daily_report_scheduled", next_at=target.isoformat(), wait_s=int(wait_seconds))
-        await asyncio.sleep(wait_seconds)
+        await _wait_until(target)
 
         try:
-            resolved = log_alert_outcomes(db_path)
+            resolved = await loop.run_in_executor(None, log_alert_outcomes, db_path)
             if resolved:
                 logger.info("alert_outcomes_enriched", count=resolved)
-            report = generate_report(db_path, days=1, bot_start=bot.start_time)
+            report = await loop.run_in_executor(
+                None, generate_report, db_path, 1, bot.start_time
+            )
             await bot.send_alert("ops", report)
             logger.info("daily_report_sent")
         except Exception:
@@ -67,6 +99,7 @@ async def schedule_daily_report(bot: PolyBot, db_path: str) -> None:
 
 async def schedule_weekly_report(bot: PolyBot, db_path: str) -> None:
     """Send weekly report every Sunday at 20:00 CEST."""
+    loop = asyncio.get_event_loop()
     while True:
         now = datetime.now(CEST)
         days_until_sunday = (6 - now.weekday()) % 7
@@ -79,9 +112,9 @@ async def schedule_weekly_report(bot: PolyBot, db_path: str) -> None:
         )
         wait = (target - now).total_seconds()
         logger.info("weekly_report_scheduled", next_at=target.isoformat(), wait_s=int(wait))
-        await asyncio.sleep(wait)
+        await _wait_until(target)
         try:
-            report = generate_weekly_report(db_path)
+            report = await loop.run_in_executor(None, generate_weekly_report, db_path)
             await bot.send_alert("ops", report)
             logger.info("weekly_report_sent")
         except Exception:
@@ -180,6 +213,7 @@ async def main() -> None:
                 c2.run_forever(),
                 schedule_daily_report(bot, db_path),
                 schedule_weekly_report(bot, db_path),
+                _monitor_loop_lag(),
                 run_trades(db_path),
                 run_scheduled_indexer(
                     "markets_gamma",
