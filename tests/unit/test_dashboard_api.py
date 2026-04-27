@@ -566,3 +566,138 @@ class TestHotMarketsRanking:
         assert data[0]["features_last"] == "volume,edge,momentum"
         assert data[1]["condition_id"] == "cond_mid"
         assert data[2]["condition_id"] == "cond_low"
+
+
+def _seed_timeline(db_path: str) -> None:
+    """Seed alerts + audit_log rows for timeline tests, on top of _seed_alerts()."""
+    con = duckdb.connect(db_path)
+    # Wallet display name on wallet_0.
+    con.execute(
+        "UPDATE tracked_wallets SET notes = 'sbimbg' WHERE address = '0xwallet_0'"
+    )
+    # An EXIT closing alert a1 (which was on cond_1).
+    con.execute(
+        "INSERT INTO audit_log (event_type, target, action, reason, actor) "
+        "VALUES ('position_exit', 'EXIT_20260427_0001', '0xwallet_0', "
+        "        ?, 'system')",
+        ['{"alert_id": "a1", "condition_id": "cond_1", "outcome": "Yes", '
+         '"entry_price": 0.65, "exit_price": 0.72, "exit_size_usd": 3200.0, '
+         '"pnl_pct": 10.77, "time_held_h": 70.18}'],
+    )
+    con.close()
+
+
+class TestTimeline:
+    """Uses the existing `client` fixture (defined at line 240) which wires
+    the test DB into the API via `app.dependency_overrides[get_db]`."""
+
+    def test_merges_buy_and_exit(self, client, db_path):
+        _seed_alerts(db_path)
+        _seed_timeline(db_path)
+        resp = client.get("/api/timeline?days=30")
+        assert resp.status_code == 200
+        rows = resp.json()
+        types = sorted({r["type"] for r in rows})
+        assert types == ["buy", "exit"]
+        exit_row = next(r for r in rows if r["type"] == "exit")
+        assert exit_row["id"] == "EXIT_20260427_0001"
+        assert exit_row["original_alert_id"] == "a1"
+        assert exit_row["entry_price"] == 0.65
+        assert exit_row["exit_price"] == 0.72
+        assert abs(exit_row["pnl_pct"] - 10.77) < 0.01
+        assert exit_row["wallet_name"] == "sbimbg"
+        assert exit_row["market_title"] == "Market One"
+
+    def test_orders_desc(self, client, db_path):
+        # BUY at T-2h, EXIT at T-1h → EXIT must come first.
+        _seed_alerts(db_path)
+        con = duckdb.connect(db_path)
+        # Push ALL BUYs back 2h so the EXIT at T-1h ranks first.
+        con.execute(
+            "UPDATE alerts SET emitted_at = CURRENT_TIMESTAMP - INTERVAL 2 HOUR"
+        )
+        # EXIT at T-1h.
+        con.execute(
+            "INSERT INTO audit_log "
+            "(event_type, target, action, reason, actor, created_at) "
+            "VALUES ('position_exit', 'EXIT_20260427_0001', '0xwallet_0', ?, "
+            "'system', CURRENT_TIMESTAMP - INTERVAL 1 HOUR)",
+            ['{"alert_id": "a1", "condition_id": "cond_1", "outcome": "Yes", '
+             '"entry_price": 0.65, "exit_price": 0.72, "exit_size_usd": 100.0, '
+             '"pnl_pct": 10.77, "time_held_h": 1.0}'],
+        )
+        con.close()
+        resp = client.get("/api/timeline?days=1")
+        assert resp.status_code == 200
+        rows = resp.json()
+        # First row is the EXIT (most recent).
+        assert rows[0]["type"] == "exit"
+        # The BUY follows.
+        assert any(r["type"] == "buy" and r["id"] == "a1" for r in rows[1:])
+
+    def test_filters_by_wallet(self, client, db_path):
+        _seed_alerts(db_path)
+        con = duckdb.connect(db_path)
+        # EXIT for wallet_0
+        con.execute(
+            "INSERT INTO audit_log (event_type, target, action, reason, actor) "
+            "VALUES ('position_exit', 'EXIT_20260427_0001', '0xwallet_0', ?, 'system')",
+            ['{"alert_id": "a1", "condition_id": "cond_1", "outcome": "Yes", '
+             '"entry_price": 0.65, "exit_price": 0.72, "exit_size_usd": 100.0, '
+             '"pnl_pct": 10.77, "time_held_h": 1.0}'],
+        )
+        # EXIT for wallet_1
+        con.execute(
+            "INSERT INTO audit_log (event_type, target, action, reason, actor) "
+            "VALUES ('position_exit', 'EXIT_20260427_0002', '0xwallet_1', ?, 'system')",
+            ['{"alert_id": "a2", "condition_id": "cond_1", "outcome": "No", '
+             '"entry_price": 0.35, "exit_price": 0.30, "exit_size_usd": 100.0, '
+             '"pnl_pct": -14.29, "time_held_h": 1.0}'],
+        )
+        con.close()
+        resp = client.get("/api/timeline?days=30&wallet=0xwallet_0")
+        assert resp.status_code == 200
+        rows = resp.json()
+        assert all(r["wallet_address"] == "0xwallet_0" for r in rows)
+        assert any(r["type"] == "exit" and r["id"] == "EXIT_20260427_0001" for r in rows)
+        assert not any(r.get("id") == "EXIT_20260427_0002" for r in rows)
+
+    def test_skips_malformed_reason(self, client, db_path):
+        _seed_alerts(db_path)
+        con = duckdb.connect(db_path)
+        # Valid EXIT
+        con.execute(
+            "INSERT INTO audit_log (event_type, target, action, reason, actor) "
+            "VALUES ('position_exit', 'EXIT_20260427_0001', '0xwallet_0', ?, 'system')",
+            ['{"alert_id": "a1", "condition_id": "cond_1", "outcome": "Yes", '
+             '"entry_price": 0.65, "exit_price": 0.72, "exit_size_usd": 100.0, '
+             '"pnl_pct": 10.77, "time_held_h": 1.0}'],
+        )
+        # Malformed (not JSON)
+        con.execute(
+            "INSERT INTO audit_log (event_type, target, action, reason, actor) "
+            "VALUES ('position_exit', 'EXIT_20260427_0002', '0xwallet_0', "
+            "'this is not json', 'system')"
+        )
+        con.close()
+        resp = client.get("/api/timeline?days=30")
+        assert resp.status_code == 200
+        ids = [r["id"] for r in resp.json()]
+        assert "EXIT_20260427_0001" in ids
+        assert "EXIT_20260427_0002" not in ids
+
+    def test_resolves_market_title(self, client, db_path):
+        _seed_alerts(db_path)
+        con = duckdb.connect(db_path)
+        con.execute(
+            "INSERT INTO audit_log (event_type, target, action, reason, actor) "
+            "VALUES ('position_exit', 'EXIT_20260427_0001', '0xwallet_0', ?, 'system')",
+            ['{"alert_id": "a1", "condition_id": "cond_1", "outcome": "Yes", '
+             '"entry_price": 0.65, "exit_price": 0.72, "exit_size_usd": 100.0, '
+             '"pnl_pct": 10.77, "time_held_h": 1.0}'],
+        )
+        con.close()
+        resp = client.get("/api/timeline?days=30")
+        exit_row = next(r for r in resp.json() if r["type"] == "exit")
+        assert exit_row["market_title"] == "Market One"
+        assert exit_row["market_slug"] == "market-one"

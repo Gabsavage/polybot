@@ -336,6 +336,133 @@ def get_audit(con: DB, limit: int = Query(default=50, ge=1, le=200)):
     ]
 
 
+@app.get("/api/timeline")
+def get_timeline(
+    con: DB,
+    days: int = Query(default=7, ge=1, le=365),
+    wallet: str | None = None,
+):
+    """Unified BUY+EXIT timeline. Merges alerts (type=buy) and
+    audit_log position_exit rows (type=exit), sorted DESC by created_at.
+    """
+    import json as _json
+
+    interval = f"{days} DAY"
+
+    # --- BUY rows (mirror /api/alerts shape, plus wallet_name and type) ---
+    buy_sql = (
+        "SELECT a.alert_id, a.component, a.emitted_at, a.wallet_address, "
+        "       tw.notes AS wallet_name, "
+        "       a.condition_id, a.side, a.size_usd, a.price, a.score, "
+        "       a.alignment_score, a.shadow_mode, a.features_passed, "
+        "       m.title AS market_title, m.slug AS market_slug, m.category, "
+        "       ao.resolution_outcome, ao.was_direction_correct, "
+        "       ao.shadow_pnl_simulated, ao.price_at_alert, "
+        "       ao.price_at_resolution, t.outcome "
+        "FROM alerts a "
+        "LEFT JOIN markets m ON a.condition_id = m.condition_id "
+        "LEFT JOIN alert_outcomes ao ON a.alert_id = ao.alert_id "
+        "LEFT JOIN trades t ON a.trade_hash = t.transaction_hash "
+        "LEFT JOIN tracked_wallets tw ON a.wallet_address = tw.address "
+        f"WHERE a.emitted_at >= CURRENT_DATE - INTERVAL '{interval}'"
+    )
+    buy_params: list = []
+    if wallet:
+        buy_sql += " AND a.wallet_address = ?"
+        buy_params.append(wallet)
+    buy_sql += " ORDER BY a.emitted_at DESC"
+    buy_rows = con.execute(buy_sql, buy_params).fetchall()
+
+    buys = [
+        {
+            "type": "buy",
+            "id": r[0],
+            "component": r[1],
+            "created_at": str(r[2]) if r[2] else None,
+            "wallet_address": r[3],
+            "wallet_name": r[4],
+            "condition_id": r[5],
+            "side": r[6],
+            "size_usd": float(r[7]) if r[7] is not None else None,
+            "price": float(r[8]) if r[8] is not None else None,
+            "score": r[9],
+            "alignment_score": r[10],
+            "shadow_mode": r[11],
+            "features_passed": r[12],
+            "market_title": r[13],
+            "market_slug": r[14],
+            "category": r[15],
+            "resolution_outcome": r[16],
+            "was_direction_correct": r[17],
+            "shadow_pnl_simulated": float(r[18]) if r[18] is not None else None,
+            "price_at_alert": float(r[19]) if r[19] is not None else None,
+            "price_at_resolution": float(r[20]) if r[20] is not None else None,
+            "outcome": r[21],
+        }
+        for r in buy_rows
+    ]
+
+    # --- EXIT rows (parse JSON reason in Python so malformed rows skip safely) ---
+    exit_sql = (
+        "SELECT al.target, al.action, al.reason, al.created_at, "
+        "       tw.notes AS wallet_name "
+        "FROM audit_log al "
+        "LEFT JOIN tracked_wallets tw ON al.action = tw.address "
+        f"WHERE al.event_type = 'position_exit' "
+        f"  AND al.created_at >= CURRENT_DATE - INTERVAL '{interval}'"
+    )
+    exit_params: list = []
+    if wallet:
+        exit_sql += " AND al.action = ?"
+        exit_params.append(wallet)
+    exit_sql += " ORDER BY al.created_at DESC"
+    exit_raw = con.execute(exit_sql, exit_params).fetchall()
+
+    exits: list[dict] = []
+    market_titles: dict[str, tuple[str | None, str | None, str | None]] = {}
+    for target, action, reason, created_at, wallet_name in exit_raw:
+        try:
+            payload = _json.loads(reason) if reason else {}
+        except (ValueError, TypeError):
+            logger.warning("dashboard_timeline_bad_reason", target=target)
+            continue
+        cond_id = payload.get("condition_id")
+        if cond_id and cond_id not in market_titles:
+            mrow = con.execute(
+                "SELECT title, slug, category FROM markets WHERE condition_id = ?",
+                [cond_id],
+            ).fetchone()
+            market_titles[cond_id] = mrow if mrow else (None, None, None)
+        title, slug, category = market_titles.get(cond_id, (None, None, None))
+        exits.append({
+            "type": "exit",
+            "id": target,
+            "wallet_address": action,
+            "wallet_name": wallet_name,
+            "condition_id": cond_id,
+            "market_title": title,
+            "market_slug": slug,
+            "category": category,
+            "original_alert_id": payload.get("alert_id"),
+            "entry_price": payload.get("entry_price"),
+            "exit_price": payload.get("exit_price"),
+            "exit_size_usd": payload.get("exit_size_usd"),
+            "pnl_pct": payload.get("pnl_pct"),
+            "time_held_h": payload.get("time_held_h"),
+            "outcome": payload.get("outcome"),
+            "created_at": str(created_at) if created_at else None,
+        })
+
+    # Merge and sort DESC by created_at (string compare works because
+    # both come from str(TIMESTAMP) in the same wall-clock format).
+    merged = sorted(
+        buys + exits,
+        key=lambda r: r["created_at"] or "",
+        reverse=True,
+    )
+    return merged[:200]
+
+
 @app.get("/api/costs")
 def get_costs(con: DB):
     row = con.execute(
