@@ -767,3 +767,50 @@ class TestProcessExit:
         ).fetchone()[0]
         con.close()
         assert cnt == 0
+
+
+class TestPollOnceDispatch:
+    def test_sell_with_pending_alert_emits_exit(self, db_path, settings):
+        _seed_wallet(db_path)
+        _seed_market(db_path)
+        _seed_alert(db_path)  # pending C1 BUY YES @ 0.65
+        # The SELL trade that should trigger the EXIT.
+        _insert_trade(
+            db_path,
+            tx_hash="0xtx_sell",
+            side="SELL",
+            size_usd=3200.0,
+            price=0.72,
+        )
+
+        bot = MagicMock()
+        bot.send_alert = AsyncMock(return_value=42)
+        det = SharpMoneyDetector(bot=bot, settings=settings)
+        det.db_path = db_path
+        det.last_check_ts = datetime.now(UTC) - timedelta(minutes=10)
+
+        import asyncio
+        asyncio.new_event_loop().run_until_complete(det.poll_once())
+
+        bot.send_alert.assert_called_once()
+        topic, message = bot.send_alert.call_args.args[:2]
+        assert "Position Exit" in message
+
+    def test_buy_path_unchanged(self, db_path, settings):
+        _seed_wallet(db_path)
+        _seed_bankroll(db_path)
+        _seed_market(db_path)
+        _insert_trade(db_path, size_usd=1500.0)  # plain BUY
+
+        bot = MagicMock()
+        bot.send_alert = AsyncMock(return_value=999)
+        det = SharpMoneyDetector(bot=bot, settings=settings)
+        det.db_path = db_path
+        det.last_check_ts = datetime.now(UTC) - timedelta(minutes=5)
+
+        import asyncio
+        count = asyncio.new_event_loop().run_until_complete(det.poll_once())
+        assert count == 1
+        message = bot.send_alert.call_args.args[1]
+        assert "C1 Sharp Money" in message  # BUY alert format, not EXIT
+        assert "Position Exit" not in message

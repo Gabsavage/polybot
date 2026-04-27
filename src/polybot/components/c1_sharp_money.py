@@ -621,10 +621,15 @@ class SharpMoneyDetector:
             return 0
 
         emitted = 0
+        exits = 0
         for trade in trades:
             try:
-                if await self._process_trade(trade):
-                    emitted += 1
+                if trade["side"] == "BUY":
+                    if await self._process_trade(trade):
+                        emitted += 1
+                elif trade["side"] == "SELL":
+                    if await self._process_exit(trade):
+                        exits += 1
             except Exception:
                 logger.exception(
                     "c1_trade_processing_error",
@@ -642,8 +647,13 @@ class SharpMoneyDetector:
         except Exception:
             logger.exception("c1_cursor_persist_failed")
 
-        if emitted:
-            logger.info("c1_poll_complete", new_alerts=emitted, trades_checked=len(trades))
+        if emitted or exits:
+            logger.info(
+                "c1_poll_complete",
+                new_alerts=emitted,
+                new_exits=exits,
+                trades_checked=len(trades),
+            )
         return emitted
 
     async def run_forever(self) -> None:
