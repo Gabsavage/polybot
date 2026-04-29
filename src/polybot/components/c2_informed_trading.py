@@ -826,15 +826,14 @@ class InformedTradingDetector:
     async def run_forever(self) -> None:
         """Main loop: scan every 5 min."""
         logger.info("c2_starting", scan_interval=self.settings.C2_SCAN_INTERVAL)
+        loop = asyncio.get_event_loop()
         while True:
             start = time.monotonic()
             try:
-                # TODO: wrap self.scan_once() in run_in_executor (see scheduler-drift
-                # follow-up). scan_once is sync and runs DB queries + external API
-                # calls on the main loop, blocking other coroutines for the duration
-                # of each scan. Daemon's _wait_until is resilient to this drift, but
-                # other awaits (Telegram polling, indexers) still suffer.
-                alerts = self.scan_once()
+                # scan_once is sync (DB queries + LLM calls); run it in the default
+                # ThreadPoolExecutor so the main event loop stays responsive for
+                # other coroutines (trades_dataapi, c1, schedulers).
+                alerts = await loop.run_in_executor(None, self.scan_once)
                 for alert in alerts:
                     await self._emit_telegram(alert)
                 if alerts:
